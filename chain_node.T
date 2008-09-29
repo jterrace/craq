@@ -4,6 +4,7 @@
 #include <set>
 #include <deque>
 #include <sstream>
+#include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
 #include "parseopt.h"
@@ -15,10 +16,11 @@
 #include "MemStorage.h"
 #include "Storage.h"
 #include "connection_pool.H"
-#include "crypto++/sha.h"
 
 using namespace CryptoPP;
 using namespace std;
+
+const int CHAIN_SIZE = 4;
 
 class rpc_server : public tame::server_t {
 public:
@@ -34,7 +36,7 @@ public:
 };
 
 void get_updates_stub();
-Storage * storage;
+Storage * storage = new MemStorage();
 
 str manager_hostname;
 int manager_port;
@@ -55,7 +57,7 @@ map<ID_Value, key_meta> key_meta_list;
 str get_ip_address() {
         vec<in_addr> addrs;
         if (!myipaddrs(&addrs))
-        fatal << "my_addr: cannot find my IP address.\n";
+        fatal << "Cannot find my IP address.\n";
 
         in_addr *addr = addrs.base();
         in_addr *loopback = NULL;
@@ -68,9 +70,9 @@ str get_ip_address() {
                 addr++;
         }
         if (addr >= addrs.lim () && (loopback == NULL))
-                fatal << "my_addr: cannot find my IP address.\n";
+                fatal << "Cannot find my IP address.\n";
         if (touse == NULL) {
-                fatal << "my_addr: use loopback address as my address\n";
+                warn << "Using loopback address as my address.\n";
                 touse = loopback;
         }
         str ids = inet_ntoa (*touse);
@@ -83,6 +85,13 @@ ID_Value get_sha1(string msg)
 	SHA().CalculateDigest(buffer, (byte *)msg.c_str(), msg.length());
 	ID_Value ret(buffer);
  	return ret;
+}
+
+void update_my_ptr() {
+	my_node_ptr = ring.find(my_id);
+	if(my_node_ptr == ring.end()) {
+		fatal << "Couldn't find my own ID in the node list! Killing myself...\n";
+	}
 }
 
 void rpc_server::dispatch(svccb * sbp) {
@@ -105,11 +114,126 @@ void rpc_server::dispatch(svccb * sbp) {
  		case ACK:
  			sbp->reject(PROC_UNAVAIL);
  			break;
+ 		case POKE_NODE_LIST_VER:
+ 			sbp->reject(PROC_UNAVAIL);
 		default: {
 			sbp->reject(PROC_UNAVAIL);
 			break;
 		}
 	}	
+}
+
+void ring_incr(map<ID_Value, Node>::iterator * it) {
+	(*it)++;
+	if( (*it)==ring.end() ) {
+		(*it) = ring.begin();
+	}
+}
+
+void ring_decr(map<ID_Value, Node>::iterator * it) {
+	if( (*it)==ring.begin() ) {
+		(*it) = ring.end();
+	}
+	(*it)--;
+}
+
+tamed static void report_bad_node(Node n) {
+	tvars {
+		int fd, i;
+		ptr<axprt_stream> x;
+		ptr<aclnt> cli; 
+		clnt_stat e;
+		bool ret;
+		rpc_node arg;
+	}
+	
+	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
+	
+	if( fd<0 ) {
+		fatal << "Lost connection to manager! Dying...\n";
+		return;
+	} else {
+		arg = n.get_rpc_node();
+		twait {	cli->call(REPORT_BAD, &arg, NULL, mkevent(e)); }
+		if(e) {
+			fatal << "Problem communicating with manager! Dying...\n";
+		}
+	}
+}
+
+tamed static void poke_neighbor(Node n, cbb cb) {
+	tvars {
+		int fd, i;
+		ptr<axprt_stream> x;
+		ptr<aclnt> cli; 
+		clnt_stat e;
+		bool ret;
+	}
+
+	warn << "Poking neighbor " << n.toString().c_str() << "\n";
+	twait { get_rpc_cli (n.getIp().c_str(), n.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+	if( fd<0 ) {
+		ret = false;
+		(*cb)(ret);
+	} else {
+		twait {	cli->call(POKE_NODE_LIST_VER, &known_version, NULL,  mkevent(e)); }
+		if(e) {
+			ret = false;
+			(*cb)(ret);
+		} else {
+			ret = true;
+			(*cb)(ret);
+		}
+	}
+}
+
+tamed static void poke_neighbors() {
+	tvars {
+		map<ID_Value, Node>::iterator it;
+		set<Node> to_poke;
+		set<Node>::iterator t;
+		deque<Node> final_list;
+		u_int i;
+		ptr<axprt_stream> x;
+		ptr<aclnt> cli; 
+		ptr<bool> res;
+		rendezvous_t<u_int, ptr<bool> > rv;
+		u_int nrecv;
+	}
+	
+	it = my_node_ptr;
+	if(ring.size()==1)
+		return;
+		
+	for(i=0; i<CHAIN_SIZE-1; i++)
+		ring_decr(&it);
+		
+	for(i=0; i<2*CHAIN_SIZE-2; i++, ring_incr(&it)) {
+		if(it == my_node_ptr) {
+			i--;
+			ring_incr(&it);
+			continue;
+		}
+		to_poke.insert(it->second);
+	}
+	
+	final_list.resize(to_poke.size());
+
+	for(t=to_poke.begin(), i=0; t!=to_poke.end(); t++, i++) {
+		final_list[i] = *t;
+		res = New refcounted<bool> ();
+		poke_neighbor(*t, mkevent(rv, i, res, *res));
+	}
+
+	nrecv = 0;
+	while(nrecv < to_poke.size()) {
+		twait(rv, i, res);
+		nrecv++;
+		if(! (*res)) {
+			report_bad_node(final_list[i]);
+		}
+	}
 }
 
 tamed static void start_rpc_srv(int listen_port) {
@@ -156,27 +280,28 @@ register_to_manager(int my_port, str h, int port) {
 
 	twait { get_rpc_cli (h, port, &cli, &rpc_manager_1, mkevent(fd)); }
 	if( fd<0 ) {
-		fatal << "Connection failed (host:" << h << ",port:" << port << "\n";
+		fatal << "Connection to manager failed (host:" << h << ",port:" << port << "\n";
 	}
 
 	twait {	
 		cli->call(REGISTER, &arg, NULL, mkevent(e));
-		//cli->call(GET_NODE_LIST, NULL, &ret, mkevent(e2));
+		cli->call(GET_NODE_LIST, NULL, &ret, mkevent(e2));
 	}
-	//warn << "donecalling\n";
 	if(e) {
-		fatal << "RPC failed!\n";
+		fatal << "Registering to the manager and retrieving node list failed.\n";
 	}
 	
 	warn << "Connected to manager.\n";
 	
-	/*known_version = ret.ver;
+	known_version = ret.ver;
 	for(i=0; i<ret.nodes.size(); i++) {
 		Node cur(ret.nodes[i]);
 		ring[cur.getId()] = cur;
-	}*/
+	}
+	update_my_ptr();
+	poke_neighbors();
 
-	//delaycb(1, 0, wrap(get_updates_stub));
+	delaycb(1, 0, wrap(get_updates_stub));
 	
 }
 

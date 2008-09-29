@@ -22,7 +22,7 @@ struct conn_info {
 	ptr<aclnt> cli;
 };
 
-static void
+void
 get_rpc_cli( const char * host, 
 				unsigned int port, 
 				ptr<aclnt> * call_ret,

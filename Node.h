@@ -28,11 +28,17 @@ public:
 	
 	string getIp();
 	unsigned int getPort();
-	ID_Value getId();
+	ID_Value getId() const;
 	
 	void setIp(string newip);
 	void setPort(unsigned int newport);
 	void setId(ID_Value newid);
+	
+	bool operator == (const Node &other) const;
+	bool operator != (const Node &other) const;
+	bool operator < (const Node &other) const;
+	bool operator > (const Node &other) const;
+	
 };
 
 #endif /*NODE_H_*/

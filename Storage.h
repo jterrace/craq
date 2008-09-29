@@ -9,7 +9,7 @@ using namespace std;
 class Storage
 {
 	public:
-		virtual blob* get(ID_Value key) const = 0;
+		virtual const blob* get(ID_Value key) = 0;
 		virtual bool set(ID_Value key, const blob* data) = 0;
 		virtual bool add(ID_Value key, const blob* data) = 0;
 		virtual bool replace(ID_Value key, const blob* data) = 0;

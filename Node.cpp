@@ -36,8 +36,13 @@ const string Node::toString() const {
 
 string Node::getIp() { return ip; }
 unsigned int Node::getPort() { return port; }
-ID_Value Node::getId() { return id; }
+ID_Value Node::getId() const { return id; }
 
 void Node::setIp(string newip) { ip = newip; }
 void Node::setPort(unsigned int newport) { port = newport; }
 void Node::setId(ID_Value newid) { id = newid; }
+
+bool Node::operator == (const Node &other) const { return (other.getId() == this->getId()); }
+bool Node::operator != (const Node &other) const { return !(*this == other); }
+bool Node::operator < (const Node &other) const { return (other.getId() < this->getId()); }
+bool Node::operator > (const Node &other) const { return (other.getId() > this->getId()); }

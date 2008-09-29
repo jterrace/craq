@@ -8,7 +8,7 @@
 
 using namespace std;
 
-class MemStorage : Storage
+class MemStorage : public Storage
 {
 	private:
 		map<ID_Value, blob*> mem_data;

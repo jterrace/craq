@@ -3,7 +3,9 @@
 deque<conn_info> conn_pool;
 
 tamed void
-get_rpc_cli( const char * host, unsigned int port, ptr<aclnt> * call_ret, const rpc_program * prog, evi_t ev ) {
+get_rpc_cli( const char * host, unsigned int port, 
+				ptr<aclnt> * call_ret, const rpc_program * prog, 
+				evi_t ev ) {
 	tvars {
 		int fd;
 		string hostname;
