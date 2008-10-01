@@ -38,6 +38,9 @@ public:
 void get_updates_stub();
 Storage * storage = new MemStorage();
 
+static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
+static void get_updates(CLOSURE);
+
 str manager_hostname;
 int manager_port;
 unsigned int known_version;
@@ -87,6 +90,17 @@ ID_Value get_sha1(string msg)
  	return ret;
 }
 
+tamed void process_poke_node_list_ver(svccb * sbp) {
+	unsigned parg = *(sbp->getarg<unsigned>());
+	warn << "Got POKE_NODE_LIST_VER Request\n";
+	
+	if(parg > known_version) {
+		get_updates();
+	}
+		
+	sbp->replyref(NULL);
+}
+
 void update_my_ptr() {
 	my_node_ptr = ring.find(my_id);
 	if(my_node_ptr == ring.end()) {
@@ -115,7 +129,8 @@ void rpc_server::dispatch(svccb * sbp) {
  			sbp->reject(PROC_UNAVAIL);
  			break;
  		case POKE_NODE_LIST_VER:
- 			sbp->reject(PROC_UNAVAIL);
+ 			process_poke_node_list_ver(sbp);
+ 			break;
 		default: {
 			sbp->reject(PROC_UNAVAIL);
 			break;
@@ -210,9 +225,9 @@ tamed static void poke_neighbors() {
 		ring_decr(&it);
 		
 	for(i=0; i<2*CHAIN_SIZE-2; i++, ring_incr(&it)) {
+		warn << it->second.toString().c_str() << " " << ring.size() << " " << i << " inloop\n";
 		if(it == my_node_ptr) {
 			i--;
-			ring_incr(&it);
 			continue;
 		}
 		to_poke.insert(it->second);
@@ -287,7 +302,7 @@ register_to_manager(int my_port, str h, int port) {
 		cli->call(REGISTER, &arg, NULL, mkevent(e));
 		cli->call(GET_NODE_LIST, NULL, &ret, mkevent(e2));
 	}
-	if(e) {
+	if(e || e2) {
 		fatal << "Registering to the manager and retrieving node list failed.\n";
 	}
 	
@@ -305,8 +320,41 @@ register_to_manager(int my_port, str h, int port) {
 	
 }
 
+tamed void get_updates() {
+	
+	tvars {
+		int fd;
+		ptr<aclnt> cli; 
+		rpc_node_list ret;
+		clnt_stat e;
+		unsigned int i;
+	}
+	
+	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
+	if( fd<0 ) {
+		fatal << "Connection to manager failed (host:" << manager_hostname << ",port:" << manager_port << "\n";
+	}
+	
+	twait {	
+		cli->call(GET_NODE_LIST, NULL, &ret, mkevent(e));
+	}
+	if(e) {
+		fatal << "Retrieving node list failed. Dying...\n";
+	}
+
+	known_version = ret.ver;
+	ring.clear();
+	for(i=0; i<ret.nodes.size(); i++) {
+		Node cur(ret.nodes[i]);
+		ring[cur.getId()] = cur;
+	}
+	update_my_ptr();
+	
+}
+
 void get_updates_stub() {
-	//get_updates();
+	twait { get_updates(); }
+	delaycb(1, 0, wrap(get_updates_stub));
 }
 
 tamed static

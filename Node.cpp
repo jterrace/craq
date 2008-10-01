@@ -28,8 +28,8 @@ void Node::set_from_rpc_node(rpc_node newnode) {
 const string Node::toString() const {
 	ostringstream ss;
 	ss << "(" << ip
-	   << "," << port
-	   << "," << id.toString()
+	   << ":" << port
+	   << " - " << id.toString()
 	   << ")";
 	return ss.str();
 }
