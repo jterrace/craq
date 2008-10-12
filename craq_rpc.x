@@ -63,7 +63,7 @@ program RPC_MANAGER {
  	unsigned ver;
  };
  
- struct query_obj_ver_arg {
+ struct query_obj_ver_ret {
  	int hist;
  	int pend;
  };
@@ -76,9 +76,10 @@ program RPC_MANAGER {
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;
- 		query_obj_ver_arg QUERY_OBJ_VER(rpc_hash) = 3;
+ 		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;
  		void ACK(ack_arg) = 4;
  		void POKE_NODE_LIST_VER(unsigned) = 5; 
+ 		void BACK_PROPAGATE(propagate_arg) = 6;
  	} = 1;
  } = 21212;
 /* ====================== */

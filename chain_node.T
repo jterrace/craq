@@ -39,6 +39,7 @@ void get_updates_stub();
 Storage * storage = new MemStorage();
 
 static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
+static void process_query_obj_ver(svccb * sbp, CLOSURE);
 static void get_updates(CLOSURE);
 
 str manager_hostname;
@@ -54,6 +55,8 @@ struct key_meta {
 	unsigned int committed;
 	unsigned int max_pending;
 	map<int, blob> pending_list;
+	bool is_head;
+	bool is_tail;
 };
 map<ID_Value, key_meta> key_meta_list;
 
@@ -101,6 +104,28 @@ tamed void process_poke_node_list_ver(svccb * sbp) {
 	sbp->replyref(NULL);
 }
 
+tamed void process_query_obj_ver(svccb * sbp) {
+	tvars {
+		rpc_hash parg;
+		query_obj_ver_ret repl;
+		ID_Value id;
+		map<ID_Value, key_meta>::iterator it;
+	}
+	
+	parg = *(sbp->getarg<rpc_hash>());
+	warn << "Got PROCESS_QUERY_OBJ Request\n";
+
+	id.set_from_rpc(parg);
+	it = key_meta_list.find(id);
+	if(it == key_meta_list.end())
+		sbp->replyref(NULL);
+	
+	repl.hist = (it->second).committed;
+	repl.pend = (it->second).max_pending;
+	sbp->replyref(repl);
+}
+
+
 void update_my_ptr() {
 	my_node_ptr = ring.find(my_id);
 	if(my_node_ptr == ring.end()) {
@@ -123,13 +148,16 @@ void rpc_server::dispatch(svccb * sbp) {
  			sbp->reject(PROC_UNAVAIL);
  			break;
  		case QUERY_OBJ_VER:
- 			sbp->reject(PROC_UNAVAIL);
+ 			process_query_obj_ver(sbp);
  			break;
  		case ACK:
  			sbp->reject(PROC_UNAVAIL);
  			break;
  		case POKE_NODE_LIST_VER:
  			process_poke_node_list_ver(sbp);
+ 			break;
+ 		case BACK_PROPAGATE:
+ 			sbp->reject(PROC_UNAVAIL);
  			break;
 		default: {
 			sbp->reject(PROC_UNAVAIL);
@@ -225,7 +253,6 @@ tamed static void poke_neighbors() {
 		ring_decr(&it);
 		
 	for(i=0; i<2*CHAIN_SIZE-2; i++, ring_incr(&it)) {
-		warn << it->second.toString().c_str() << " " << ring.size() << " " << i << " inloop\n";
 		if(it == my_node_ptr) {
 			i--;
 			continue;
