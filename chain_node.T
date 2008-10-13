@@ -20,7 +20,7 @@
 using namespace CryptoPP;
 using namespace std;
 
-const int CHAIN_SIZE = 4;
+const unsigned int CHAIN_SIZE = 4;
 
 class rpc_server : public tame::server_t {
 public:
@@ -40,6 +40,10 @@ Storage * storage = new MemStorage();
 
 static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
 static void process_query_obj_ver(svccb * sbp, CLOSURE);
+static void process_tail_read(svccb * sbp, CLOSURE);
+static void process_head_write(svccb * sbp, CLOSURE);
+static void process_propagate(svccb * sbp, CLOSURE);
+static void propagate(ID_Value id, cbb cb, CLOSURE);
 static void get_updates(CLOSURE);
 
 str manager_hostname;
@@ -113,7 +117,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 	}
 	
 	parg = *(sbp->getarg<rpc_hash>());
-	warn << "Got PROCESS_QUERY_OBJ Request\n";
+	warn << "Got QUERY_OBJ Request\n";
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
@@ -125,6 +129,125 @@ tamed void process_query_obj_ver(svccb * sbp) {
 	sbp->replyref(repl);
 }
 
+tamed void process_tail_read(svccb * sbp) {
+	tvars {
+		rpc_hash parg;
+		const blob * repl;
+		ID_Value id;
+		map<ID_Value, key_meta>::iterator it;
+	}
+	
+	parg = *(sbp->getarg<rpc_hash>());
+	warn << "Got TAIL_READ Request\n";
+
+	id.set_from_rpc(parg);
+	it = key_meta_list.find(id);
+	if(it == key_meta_list.end() || !(it->second).is_tail )
+		sbp->replyref(NULL);
+	
+	repl = storage->get(id);
+	sbp->replyref(*repl);	
+}
+
+tamed void process_head_write(svccb * sbp) {
+	tvars {
+		head_write_arg parg;
+		ID_Value id;
+		map<ID_Value, key_meta>::iterator it;
+		map<ID_Value, Node>::iterator parent_ptr;
+		key_meta wrt;
+		bool ret_val;
+	}
+	
+	//Reject writes unless we can form a chain
+	if(ring.size() < CHAIN_SIZE)
+		sbp->replyref(false);
+	
+	parg = *(sbp->getarg<head_write_arg>());
+	warn << "Got HEAD_WRITE Request\n";
+
+	id.set_from_rpc(parg.id);
+	it = key_meta_list.find(id);
+	//If we're not the head, reject the request
+	if(it != key_meta_list.end() || !(it->second).is_head )
+		sbp->replyref(false);
+		
+	parent_ptr = my_node_ptr;
+	parent_ptr--;
+	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
+		sbp->replyref(false);
+	} else if(it == key_meta_list.end()) {
+		wrt.committed = 0;
+		wrt.max_pending = 1;
+		wrt.is_tail = false;
+		wrt.is_head = true;
+		wrt.pending_list[1] = parg.data;
+		key_meta_list[id] = wrt;
+	}
+	
+	twait { propagate(id, mkevent(ret_val)); }
+	
+	sbp->replyref(true);	
+}
+
+tamed void process_propagate(svccb * sbp) {
+
+}
+
+tamed void propagate(ID_Value id, cbb cb) {
+	tvars {
+		map<ID_Value, key_meta>::iterator it;
+		map<ID_Value, Node>::iterator succ;
+		map<int, blob>::iterator dt_it;
+		propagate_arg arg;
+		ptr<aclnt> cli; 
+		clnt_stat e;
+		int fd;
+		bool ret;
+		bool rpc_ret;
+	}
+	
+	it = key_meta_list.find(id);
+	if(it == key_meta_list.end()) {
+		ret = false;
+		(*cb)(ret);
+		return;
+	}
+		
+	succ = my_node_ptr;
+	succ++;
+	
+	dt_it = it->second.pending_list.find(it->second.max_pending);
+	if(dt_it == it->second.pending_list.end()) {
+		ret = false;
+		(*cb)(ret);
+		return;
+	}
+	arg.id = id.get_rpc_id();
+	arg.ver = it->second.max_pending;
+	arg.data = dt_it->second;
+
+	warn << "Propagating to neighbor " << id.toString().c_str() << "\n";
+	twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+	if( fd<0 ) {
+		ret = false;
+		(*cb)(ret);
+		return;
+	}
+	
+	twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
+	if(e || !rpc_ret) {
+		ret = false;
+		(*cb)(ret);
+		return;
+	}
+	
+	ret = true;
+	(*cb)(ret);
+	return;
+	
+}
 
 void update_my_ptr() {
 	my_node_ptr = ring.find(my_id);
@@ -139,13 +262,13 @@ void rpc_server::dispatch(svccb * sbp) {
 	u_int p = sbp->proc();
 	switch(p) {
 		case TAIL_READ:
-			sbp->reject(PROC_UNAVAIL);
+			process_tail_read(sbp);
 			break;
  		case HEAD_WRITE:
- 			sbp->reject(PROC_UNAVAIL);
+ 			process_head_write(sbp);
  			break;
  		case PROPAGATE:
- 			sbp->reject(PROC_UNAVAIL);
+ 			process_propagate(sbp);
  			break;
  		case QUERY_OBJ_VER:
  			process_query_obj_ver(sbp);
