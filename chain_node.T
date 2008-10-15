@@ -173,7 +173,7 @@ tamed void process_head_write(svccb * sbp) {
 		sbp->replyref(false);
 		
 	parent_ptr = my_node_ptr;
-	parent_ptr--;
+	ring_decr(parent_ptr);
 	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
 		sbp->replyref(false);
 	} else if(it == key_meta_list.end()) {
@@ -191,6 +191,56 @@ tamed void process_head_write(svccb * sbp) {
 }
 
 tamed void process_propagate(svccb * sbp) {
+	tvars {
+		propagate_arg parg;
+		ID_Value id;
+		map<ID_Value, Node>::iterator it;
+		map<ID_Value, Node>::iterator parent_ptr;
+		map<ID_Value, key_meta>::iterator kit;
+		map<ID_Value, Node>::iterator t;
+		key_meta wrt;
+		int i;
+		bool in_succ;
+	}
+
+	parg = *(sbp->getarg<propagate_arg>());
+	warn << "Got PROPAGATE Request\n";
+	
+	id.set_from_rpc(parg.id);
+
+	kit = key_meta_list.find(id);
+	//Reject if we already have a higher version
+	if(kit != key_meta_list.end() || kit->second.max_pending > parg.ver  )
+		sbp->replyref(false);
+		
+	//Reply true if versions are equal
+	if(kit != key_meta_list.end() || kit->second.max_pending == parg.ver  )
+		sbp->replyref(true);
+
+	t = ring_succ(id);
+	in_succ = false;
+	for(i=0; i<RING_SIZE; i++) {
+		if(t == my_node_ptr) {
+			in_succ = true;
+			break;
+		}
+		ring_inc(t);
+	}
+	
+	if(!in_succ) {
+		sbp->replyref(false);
+	}
+	
+	if(kit == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
+		//Reply false if 
+		sbp->replyref(false);
+	} else if(kit == key_meta_list.end()) {
+		//Update meta key
+		wrt = kit->second;
+		wrt.max_pending = parg.ver;
+		wrt.pending_list[parg.ver] = parg.data;
+		key_meta_list[id] = wrt;
+	}
 
 }
 
@@ -207,40 +257,41 @@ tamed void propagate(ID_Value id, cbb cb) {
 		bool rpc_ret;
 	}
 	
-	it = key_meta_list.find(id);
-	if(it == key_meta_list.end()) {
-		ret = false;
-		(*cb)(ret);
-		return;
-	}
+	rpc_ret = false;
+	while(!rpc_ret) {
+	
+		it = key_meta_list.find(id);
+		if(it == key_meta_list.end()) {
+			ret = false;
+			(*cb)(ret);
+			return;
+		}
+			
+		succ = my_node_ptr;
+		ring_incr(succ);
 		
-	succ = my_node_ptr;
-	succ++;
+		dt_it = it->second.pending_list.find(it->second.max_pending);
+		if(dt_it == it->second.pending_list.end()) {
+			ret = false;
+			(*cb)(ret);
+			return;
+		}
+		arg.id = id.get_rpc_id();
+		arg.ver = it->second.max_pending;
+		arg.data = dt_it->second;
 	
-	dt_it = it->second.pending_list.find(it->second.max_pending);
-	if(dt_it == it->second.pending_list.end()) {
-		ret = false;
-		(*cb)(ret);
-		return;
-	}
-	arg.id = id.get_rpc_id();
-	arg.ver = it->second.max_pending;
-	arg.data = dt_it->second;
-
-	warn << "Propagating to neighbor " << id.toString().c_str() << "\n";
-	twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-	if( fd<0 ) {
-		ret = false;
-		(*cb)(ret);
-		return;
-	}
+		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.getIp().c_str() << "\n";
+		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	
-	twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
-	if(e || !rpc_ret) {
-		ret = false;
-		(*cb)(ret);
-		return;
+		if( fd<0 ) {
+			continue;
+		}
+		
+		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
+		if(e) {
+			continue;
+		}
+	
 	}
 	
 	ret = true;
@@ -287,6 +338,13 @@ void rpc_server::dispatch(svccb * sbp) {
 			break;
 		}
 	}	
+}
+
+map<ID_Value, Node>::iterator ring_succ(ID_Value id) {
+	map<ID_Value, Node>::iterator it = ring.lower_bound(id);
+	if(it == ring.end())
+		it = ring.begin();
+	return it;
 }
 
 void ring_incr(map<ID_Value, Node>::iterator * it) {
