@@ -46,6 +46,10 @@ static void process_propagate(svccb * sbp, CLOSURE);
 static void propagate(ID_Value id, cbb cb, CLOSURE);
 static void get_updates(CLOSURE);
 
+map<ID_Value, Node>::iterator ring_succ(ID_Value id);
+void ring_incr(map<ID_Value, Node>::iterator * it);
+void ring_decr(map<ID_Value, Node>::iterator * it);
+
 str manager_hostname;
 int manager_port;
 unsigned int known_version;
@@ -173,7 +177,7 @@ tamed void process_head_write(svccb * sbp) {
 		sbp->replyref(false);
 		
 	parent_ptr = my_node_ptr;
-	ring_decr(parent_ptr);
+	ring_decr(&parent_ptr);
 	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
 		sbp->replyref(false);
 	} else if(it == key_meta_list.end()) {
@@ -199,8 +203,10 @@ tamed void process_propagate(svccb * sbp) {
 		map<ID_Value, key_meta>::iterator kit;
 		map<ID_Value, Node>::iterator t;
 		key_meta wrt;
-		int i;
+		u_int i;
 		bool in_succ;
+		bool tail;
+		bool ret_val;
 	}
 
 	parg = *(sbp->getarg<propagate_arg>());
@@ -210,36 +216,51 @@ tamed void process_propagate(svccb * sbp) {
 
 	kit = key_meta_list.find(id);
 	//Reject if we already have a higher version
-	if(kit != key_meta_list.end() || kit->second.max_pending > parg.ver  )
+	if(kit != key_meta_list.end() || kit->second.max_pending > parg.ver  ) {
 		sbp->replyref(false);
+		return;
+	}
 		
 	//Reply true if versions are equal
-	if(kit != key_meta_list.end() || kit->second.max_pending == parg.ver  )
+	if(kit != key_meta_list.end() || kit->second.max_pending == parg.ver  ) {
 		sbp->replyref(true);
+		return;
+	}
+
+	wrt.committed = 0;
+	wrt.max_pending = 0;
+	wrt.is_tail = false;
+	wrt.is_head = false;
 
 	t = ring_succ(id);
 	in_succ = false;
-	for(i=0; i<RING_SIZE; i++) {
+	for(i=0; i<CHAIN_SIZE; i++) {
 		if(t == my_node_ptr) {
 			in_succ = true;
 			break;
 		}
-		ring_inc(t);
+		ring_incr(&t);
 	}
-	
+	if(i == CHAIN_SIZE-1)
+		wrt.is_tail = true;
+	if(i == 0)
+		wrt.is_head = true;
+	//Return false if we don't think we should be storing a replica of this key
 	if(!in_succ) {
 		sbp->replyref(false);
 	}
 	
-	if(kit == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
-		//Reply false if 
-		sbp->replyref(false);
-	} else if(kit == key_meta_list.end()) {
-		//Update meta key
+	if(kit != key_meta_list.end()) {
 		wrt = kit->second;
-		wrt.max_pending = parg.ver;
-		wrt.pending_list[parg.ver] = parg.data;
-		key_meta_list[id] = wrt;
+	}
+
+	//Update meta key
+	wrt.max_pending = parg.ver;
+	wrt.pending_list[parg.ver] = parg.data;
+	key_meta_list[id] = wrt;
+
+	if(!wrt.is_tail) {
+		twait { propagate(id, mkevent(ret_val)); }
 	}
 
 }
@@ -268,7 +289,7 @@ tamed void propagate(ID_Value id, cbb cb) {
 		}
 			
 		succ = my_node_ptr;
-		ring_incr(succ);
+		ring_incr(&succ);
 		
 		dt_it = it->second.pending_list.find(it->second.max_pending);
 		if(dt_it == it->second.pending_list.end()) {
