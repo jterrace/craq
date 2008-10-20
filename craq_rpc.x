@@ -77,9 +77,9 @@ program RPC_MANAGER {
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;
  		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;
- 		void ACK(ack_arg) = 4;
+ 		bool ACK(ack_arg) = 4;
  		void POKE_NODE_LIST_VER(unsigned) = 5; 
- 		void BACK_PROPAGATE(propagate_arg) = 6;
+ 		bool BACK_PROPAGATE(propagate_arg) = 6;
  	} = 1;
  } = 21212;
 /* ====================== */
