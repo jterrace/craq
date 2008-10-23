@@ -224,19 +224,9 @@ tamed void process_propagate(svccb * sbp) {
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
-<<<<<<< .mine
+
 	//Reply true if we already have a higher or equal version
 	if(kit != key_meta_list.end() || kit->second.max_pending >= parg.ver  ) {
-=======
-	//Reject if we already have a higher version
-	if(kit != key_meta_list.end() || kit->second.max_pending > parg.ver  ) {
-		sbp->replyref(false);
-		return;
-	}
-		
-	//Reply true if versions are equal
-	if(kit != key_meta_list.end() || kit->second.max_pending == parg.ver  ) {
->>>>>>> .r82
 		sbp->replyref(true);
 		return;
 	}
@@ -298,7 +288,6 @@ tamed void process_back_propagate(svccb * sbp) {
 	parg = *(sbp->getarg<propagate_arg>());
 	warn << "Got BACK_PROPAGATE Request\n";
 	
-<<<<<<< .mine
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
@@ -333,11 +322,7 @@ tamed void process_back_propagate(svccb * sbp) {
 	}
 	
 	if(kit != key_meta_list.end()) {
-=======
-	if(kit != key_meta_list.end()) {
->>>>>>> .r82
 		wrt = kit->second;
-<<<<<<< .mine
 	}
 
 	//Update meta key
@@ -378,17 +363,6 @@ tamed void process_ack(svccb * sbp) {
 	if(kit->second.committed >= parg.ver  ) {
 		sbp->replyref(true);
 		return;
-=======
-	}
-
-	//Update meta key
-	wrt.max_pending = parg.ver;
-	wrt.pending_list[parg.ver] = parg.data;
-	key_meta_list[id] = wrt;
-
-	if(!wrt.is_tail) {
-		twait { propagate(id, mkevent(ret_val)); }
->>>>>>> .r82
 	}
 
 	//Try and find the acked version so we can commit and error if not found
