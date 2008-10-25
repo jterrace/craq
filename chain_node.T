@@ -113,11 +113,11 @@ ID_Value get_sha1(string msg)
 tamed void process_poke_node_list_ver(svccb * sbp) {
 	unsigned parg = *(sbp->getarg<unsigned>());
 	warn << "Got POKE_NODE_LIST_VER Request\n";
-	
+
 	if(parg > known_version) {
 		get_updates();
 	}
-		
+
 	sbp->replyref(NULL);
 }
 
@@ -128,7 +128,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 		ID_Value id;
 		map<ID_Value, key_meta>::iterator it;
 	}
-	
+
 	parg = *(sbp->getarg<rpc_hash>());
 	warn << "Got QUERY_OBJ Request\n";
 
@@ -136,7 +136,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 	it = key_meta_list.find(id);
 	if(it == key_meta_list.end())
 		sbp->replyref(NULL);
-	
+
 	repl.hist = (it->second).committed;
 	repl.pend = (it->second).max_pending;
 	sbp->replyref(repl);
@@ -149,7 +149,7 @@ tamed void process_tail_read(svccb * sbp) {
 		ID_Value id;
 		map<ID_Value, key_meta>::iterator it;
 	}
-	
+
 	parg = *(sbp->getarg<rpc_hash>());
 	warn << "Got TAIL_READ Request\n";
 
@@ -157,9 +157,9 @@ tamed void process_tail_read(svccb * sbp) {
 	it = key_meta_list.find(id);
 	if(it == key_meta_list.end() || !(it->second).is_tail )
 		sbp->replyref(NULL);
-	
+
 	repl = storage->get(id);
-	sbp->replyref(*repl);	
+	sbp->replyref(*repl);
 }
 
 tamed void process_head_write(svccb * sbp) {
@@ -171,11 +171,11 @@ tamed void process_head_write(svccb * sbp) {
 		key_meta wrt;
 		bool ret_val;
 	}
-	
+
 	//Reject writes unless we can form a chain
 	if(ring.size() < CHAIN_SIZE)
 		sbp->replyref(false);
-	
+
 	parg = *(sbp->getarg<head_write_arg>());
 	warn << "Got HEAD_WRITE Request\n";
 
@@ -184,7 +184,7 @@ tamed void process_head_write(svccb * sbp) {
 	//If we're not the head, reject the request
 	if(it != key_meta_list.end() || !(it->second).is_head )
 		sbp->replyref(false);
-		
+
 	parent_ptr = my_node_ptr;
 	ring_decr(&parent_ptr);
 	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
@@ -197,10 +197,10 @@ tamed void process_head_write(svccb * sbp) {
 		wrt.pending_list[1] = parg.data;
 		key_meta_list[id] = wrt;
 	}
-	
+
 	twait { propagate(id, mkevent(ret_val)); }
-	
-	sbp->replyref(true);	
+
+	sbp->replyref(true);
 }
 
 tamed void process_propagate(svccb * sbp) {
@@ -220,7 +220,7 @@ tamed void process_propagate(svccb * sbp) {
 
 	parg = *(sbp->getarg<propagate_arg>());
 	warn << "Got PROPAGATE Request\n";
-	
+
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
@@ -254,7 +254,7 @@ tamed void process_propagate(svccb * sbp) {
 		sbp->replyref(false);
 		return;
 	}
-	
+
 	if(kit != key_meta_list.end()) {
 		wrt = kit->second;
 	}
@@ -287,7 +287,7 @@ tamed void process_back_propagate(svccb * sbp) {
 
 	parg = *(sbp->getarg<propagate_arg>());
 	warn << "Got BACK_PROPAGATE Request\n";
-	
+
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
@@ -320,7 +320,7 @@ tamed void process_back_propagate(svccb * sbp) {
 		sbp->replyref(false);
 		return;
 	}
-	
+
 	if(kit != key_meta_list.end()) {
 		wrt = kit->second;
 	}
@@ -348,17 +348,17 @@ tamed void process_ack(svccb * sbp) {
 
 	parg = *(sbp->getarg<ack_arg>());
 	warn << "Got ACK Request\n";
-	
+
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
-	
+
 	//If we don't have this key, just reply false
 	if(kit == key_meta_list.end()) {
 		sbp->replyref(false);
-		return;	
+		return;
 	}
-	
+
 	//If we have higher or equal version committed, just reply true
 	if(kit->second.committed >= parg.ver  ) {
 		sbp->replyref(true);
@@ -376,7 +376,7 @@ tamed void process_ack(svccb * sbp) {
 		sbp->replyref(false);
 		return;
 	}
-	
+
 	//Update committed version number
 	kit->second.committed = parg.ver;
 	//Erase all pending versions less than one just committed
@@ -392,26 +392,26 @@ tamed void propagate(ID_Value id, cbb cb) {
 		map<ID_Value, Node>::iterator succ;
 		map<int, blob>::iterator dt_it;
 		propagate_arg arg;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		int fd;
 		bool ret;
 		bool rpc_ret;
 	}
-	
+
 	rpc_ret = false;
 	while(!rpc_ret) {
-	
+
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
 			(*cb)(ret);
 			return;
 		}
-			
+
 		succ = my_node_ptr;
 		ring_incr(&succ);
-		
+
 		dt_it = it->second.pending_list.find(it->second.max_pending);
 		if(dt_it == it->second.pending_list.end()) {
 			ret = false;
@@ -421,27 +421,27 @@ tamed void propagate(ID_Value id, cbb cb) {
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.max_pending;
 		arg.data = dt_it->second;
-	
+
 		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.getIp().c_str() << "\n";
 		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-	
+
 		if( fd<0 ) {
 			report_bad_node(succ->second);
 			continue;
 		}
-		
+
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e || !rpc_ret) {
 			report_bad_node(succ->second);
 			continue;
 		}
-	
+
 	}
-	
+
 	ret = true;
 	(*cb)(ret);
 	return;
-	
+
 }
 
 tamed void back_propagate(ID_Value id, cbb cb) {
@@ -450,26 +450,26 @@ tamed void back_propagate(ID_Value id, cbb cb) {
 		map<ID_Value, Node>::iterator pred;
 		map<int, blob>::iterator dt_it;
 		propagate_arg arg;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		int fd;
 		bool ret;
 		bool rpc_ret;
 	}
-	
+
 	rpc_ret = false;
 	while(!rpc_ret) {
-	
+
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
 			(*cb)(ret);
 			return;
 		}
-			
+
 		pred = my_node_ptr;
 		ring_decr(&pred);
-		
+
 		dt_it = it->second.pending_list.find(it->second.max_pending);
 		if(dt_it == it->second.pending_list.end()) {
 			ret = false;
@@ -479,27 +479,27 @@ tamed void back_propagate(ID_Value id, cbb cb) {
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.max_pending;
 		arg.data = dt_it->second;
-	
+
 		warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.getIp().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-	
+
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			continue;
 		}
-		
+
 		twait {	cli->call(BACK_PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			continue;
 		}
-	
+
 	}
-	
+
 	ret = true;
 	(*cb)(ret);
 	return;
-	
+
 }
 
 tamed void ack(ID_Value id, cbb cb) {
@@ -508,49 +508,49 @@ tamed void ack(ID_Value id, cbb cb) {
 		map<ID_Value, Node>::iterator pred;
 		map<int, blob>::iterator dt_it;
 		ack_arg arg;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		int fd;
 		bool ret;
 		bool rpc_ret;
 	}
-	
+
 	rpc_ret = false;
 	while(!rpc_ret) {
-	
+
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
 			(*cb)(ret);
 			return;
 		}
-			
+
 		pred = my_node_ptr;
 		ring_decr(&pred);
-		
+
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.committed;
-	
+
 		warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.getIp().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-	
+
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			continue;
 		}
-		
+
 		twait {	cli->call(ACK, &arg, &rpc_ret,  mkevent(e)); }
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			continue;
 		}
-	
+
 	}
-	
+
 	ret = true;
 	(*cb)(ret);
 	return;
-	
+
 }
 
 void update_my_ptr() {
@@ -562,7 +562,7 @@ void update_my_ptr() {
 
 void rpc_server::dispatch(svccb * sbp) {
 	if(!sbp){}
-	
+
 	u_int p = sbp->proc();
 	switch(p) {
 		case TAIL_READ:
@@ -590,7 +590,7 @@ void rpc_server::dispatch(svccb * sbp) {
 			sbp->reject(PROC_UNAVAIL);
 			break;
 		}
-	}	
+	}
 }
 
 map<ID_Value, Node>::iterator ring_succ(ID_Value id) {
@@ -618,14 +618,14 @@ tamed void report_bad_node(Node n) {
 	tvars {
 		int fd, i;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		bool ret;
 		rpc_node arg;
 	}
-	
+
 	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
-	
+
 	if( fd<0 ) {
 		fatal << "Lost connection to manager! Dying...\n";
 	} else {
@@ -641,7 +641,7 @@ tamed static void poke_neighbor(Node n, cbb cb) {
 	tvars {
 		int fd, i;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		bool ret;
 	}
@@ -674,19 +674,19 @@ tamed static void poke_neighbors() {
 		deque<Node> final_list;
 		u_int i;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		ptr<bool> res;
 		rendezvous_t<u_int, ptr<bool> > rv;
 		u_int nrecv;
 	}
-	
+
 	it = my_node_ptr;
 	if(ring.size()==1)
 		return;
-		
+
 	for(i=0; i<CHAIN_SIZE-1; i++)
 		ring_decr(&it);
-		
+
 	for(i=0; i<2*CHAIN_SIZE-2; i++, ring_incr(&it)) {
 		if(it == my_node_ptr) {
 			i--;
@@ -694,7 +694,7 @@ tamed static void poke_neighbors() {
 		}
 		to_poke.insert(it->second);
 	}
-	
+
 	final_list.resize(to_poke.size());
 
 	for(t=to_poke.begin(), i=0; t!=to_poke.end(); t++, i++) {
@@ -725,12 +725,12 @@ tamed static void start_rpc_srv(int listen_port) {
 	exit(ret);
 }
 
-tamed static void 
+tamed static void
 register_to_manager(int my_port, str h, int port) {
 	tvars {
 		int fd,r;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		str ip;
 		clnt_stat e, e2;
 		ostringstream ss;
@@ -738,10 +738,10 @@ register_to_manager(int my_port, str h, int port) {
 		rpc_node_list ret;
 		unsigned int i;
 	}
-	
+
 	manager_hostname = h;
 	manager_port = port;
-	
+
 	ip = get_ip_address();
 	srand ( time(NULL) );
 	r = rand();
@@ -752,7 +752,7 @@ register_to_manager(int my_port, str h, int port) {
 	arg.ip = ip;
 	arg.id = my_id.get_rpc_id();
 	arg.port = my_port;
-	
+
 	my_node.set_from_rpc_node(arg);
 
 	twait { get_rpc_cli (h, port, &cli, &rpc_manager_1, mkevent(fd)); }
@@ -760,16 +760,16 @@ register_to_manager(int my_port, str h, int port) {
 		fatal << "Connection to manager failed (host:" << h << ",port:" << port << "\n";
 	}
 
-	twait {	
+	twait {
 		cli->call(REGISTER, &arg, NULL, mkevent(e));
 		cli->call(GET_NODE_LIST, NULL, &ret, mkevent(e2));
 	}
 	if(e || e2) {
 		fatal << "Registering to the manager and retrieving node list failed.\n";
 	}
-	
+
 	warn << "Connected to manager.\n";
-	
+
 	known_version = ret.ver;
 	for(i=0; i<ret.nodes.size(); i++) {
 		Node cur(ret.nodes[i]);
@@ -779,14 +779,63 @@ register_to_manager(int my_port, str h, int port) {
 	poke_neighbors();
 
 	delaycb(1, 0, wrap(get_updates_stub));
-	
+
+}
+
+tamed void node_added(ID_Value id) {
+
+}
+
+tamed void node_deleted(ID_Value id) {
+
 }
 
 tamed void get_updates() {
-	
+
+	tvars {
+		int fd;
+		ptr<aclnt> cli;
+		clnt_stat e;
+		u_int newest_ver;
+		rpc_memb_delta delt;
+		ID_Value id_changed;
+	}
+
+	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
+	if( fd<0 ) {
+		fatal << "Connection to manager failed (host:" << manager_hostname << ",port:" << manager_port << "\n";
+	}
+
+	twait {	cli->call(GET_NODE_LIST_VERSION, NULL, &newest_ver, mkevent(e));
+	if(e) {
+		fatal << "Retrieving the node list from the manager failed.\n";
+	}
+
+	if(newest_ver <= known_version) {
+		return;
+	}
+
+	twait { cli->call(GET_NODE_LIST_DELTA, &known_version, &delt, mkevent(e)); }
+	if(e) {
+		fatal << "Retrieving the delta of the node list from the manager failed.\n";
+	}
+
+	if(delt.changes.size() == 0) {
+		//Do diff with full version
+	} else {
+		for(int i=0; i<delt.changes.size(); i++) {
+			id_changed.set_from_rpc(delt.changes[i].id);
+			if(delt.changes[i].event == EVENT_ADD) {
+				node_added(id_changed);
+			} else {
+				node_deleted(id_changed);
+			}
+		}
+	}
+
 	//get delta update
 	//if too old, make deltas ourself by doing a diff
-	
+
 	//if node was removed,
 		//if he was my predecessor
 			//either i am head, if so mark as head
@@ -801,7 +850,7 @@ tamed void get_updates() {
 		//if he is my new predecessor
 			//if i was head, back_propagate, ack, and remove head
 			//if i was not head, back_propagate and ack
-	
+
 }
 
 void get_updates_stub() {
@@ -814,7 +863,7 @@ void main2(int argc, char **argv) {
 	int listen_port;
 	str manager_hostname;
 	int manager_port;
-	
+
 	if (argc == 4 && convertint (argv[1], &listen_port)
 				  		 && convertint(argv[3], &manager_port)) {
 	 	manager_hostname = argv[2];
