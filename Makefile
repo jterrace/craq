@@ -1,14 +1,14 @@
 TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
 CC=g++
-CFLAGS= -g -Wall -Werror -Wno-unused
+CFLAGS= -g -Wall -Werror -Wno-unused -Wno-sign-compare
 INCLUDE= -I/usr/local/include/sfslite -I/usr/include/crypto++
 SFS_LIB_DIR=/usr/local/lib/sfslite
 LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++
 OBJS=craq_rpc.o ID_Value.o Node.o MemStorage.o connection_pool.o
 
 all: manager chain_node test
-test: manager_test
+test: manager_test single_write_read
 
 craq_rpc.o: craq_rpc.x
 	$(RPCC) -h -o craq_rpc.h craq_rpc.x
@@ -40,13 +40,19 @@ chain_node: chain_node.T $(OBJS)
 	
 manager_test: test/manager_test.T $(OBJS)
 	$(TAME) -o test/manager_test.C test/manager_test.T
-	$(CC) $(INCLUDE) $(CFLAGS) -c test/manager_test.C
-	$(CC) $(CFLAGS) -o test/manager_test manager_test.o $(OBJS) $(LIBS)
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/manager_test.o -c test/manager_test.C
+	$(CC) $(CFLAGS) -o test/manager_test test/manager_test.o $(OBJS) $(LIBS)
+	
+single_write_read: test/single_write_read.T $(OBJS)
+	$(TAME) -o test/single_write_read.C test/single_write_read.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_write_read.o -c test/single_write_read.C
+	$(CC) $(CFLAGS) -o test/single_write_read test/single_write_read.o $(OBJS) $(LIBS)
 	
 clean:
 	rm -f chain_node chain_node.C\
 		manager manager.C \
 		craq_rpc.h craq_rpc.c \
 		Node.C MemStorage.C connection_pool.C connection_pool.H \
-		test/manager_test.C test/manager_test m \
-		*.o
+		test/manager_test.C test/manager_test \
+		test/single_write_read.C test/single_write_read \
+		*.o test/*.o

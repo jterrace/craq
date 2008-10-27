@@ -36,37 +36,8 @@ public:
 };
 
 void get_updates_stub();
+void random_no_op_stub();
 Storage * storage = new MemStorage();
-
-static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
-static void process_query_obj_ver(svccb * sbp, CLOSURE);
-static void process_tail_read(svccb * sbp, CLOSURE);
-static void process_head_write(svccb * sbp, CLOSURE);
-static void process_propagate(svccb * sbp, CLOSURE);
-static void propagate(ID_Value id, cbb cb, CLOSURE);
-static void process_back_propagate(svccb * sbp, CLOSURE);
-static void back_propagate(ID_Value id, cbb cb, CLOSURE);
-static void process_ack(svccb * sbp, CLOSURE);
-static void ack(ID_Value id, cbb cb, CLOSURE);
-static void get_updates(CLOSURE);
-static void report_bad_node(Node n, CLOSURE);
-
-map<ID_Value, Node>::iterator ring_succ(ID_Value id);
-void ring_incr(map<ID_Value, Node>::iterator * it);
-void ring_decr(map<ID_Value, Node>::iterator * it);
-
-map<ID_Value, Node>::iterator ring_succ(ID_Value id);
-void ring_incr(map<ID_Value, Node>::iterator * it);
-void ring_decr(map<ID_Value, Node>::iterator * it);
-
-str manager_hostname;
-int manager_port;
-unsigned int known_version;
-
-map<ID_Value, Node> ring;
-Node my_node;
-map<ID_Value, Node>::iterator my_node_ptr;
-ID_Value my_id;
 
 struct key_meta {
 	unsigned int committed;
@@ -75,7 +46,43 @@ struct key_meta {
 	bool is_head;
 	bool is_tail;
 };
+
+typedef map<ID_Value, Node>::iterator ring_iter;
+typedef map<ID_Value, key_meta>::iterator key_iter;
+
+static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
+static void process_query_obj_ver(svccb * sbp, CLOSURE);
+static void process_tail_read(svccb * sbp, CLOSURE);
+static void process_head_write(svccb * sbp, CLOSURE);
+static void process_propagate(svccb * sbp, CLOSURE);
+static void propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
+static void process_back_propagate(svccb * sbp, CLOSURE);
+static void back_propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
+static void process_ack(svccb * sbp, CLOSURE);
+static void ack(ID_Value id, cbb cb, CLOSURE);
+static void get_updates(CLOSURE);
+static void report_bad_node(Node n, CLOSURE);
+
+ring_iter ring_succ(ID_Value id);
+void ring_incr(ring_iter * it);
+void ring_decr(ring_iter * it);
+
+ring_iter ring_succ(ID_Value id);
+void ring_incr(ring_iter * it);
+void ring_decr(ring_iter * it);
+
+str manager_hostname;
+int manager_port;
+unsigned int known_version;
+
+map<ID_Value, Node> ring;
+Node my_node;
+ring_iter my_node_ptr;
+ID_Value my_id;
+
 map<ID_Value, key_meta> key_meta_list;
+
+bool update_running = false;
 
 str get_ip_address() {
         vec<in_addr> addrs;
@@ -126,7 +133,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 		rpc_hash parg;
 		query_obj_ver_ret repl;
 		ID_Value id;
-		map<ID_Value, key_meta>::iterator it;
+		key_iter it;
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
@@ -147,7 +154,7 @@ tamed void process_tail_read(svccb * sbp) {
 		rpc_hash parg;
 		const blob * repl;
 		ID_Value id;
-		map<ID_Value, key_meta>::iterator it;
+		key_iter it;
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
@@ -166,8 +173,8 @@ tamed void process_head_write(svccb * sbp) {
 	tvars {
 		head_write_arg parg;
 		ID_Value id;
-		map<ID_Value, key_meta>::iterator it;
-		map<ID_Value, Node>::iterator parent_ptr;
+		key_iter it;
+		ring_iter parent_ptr;
 		key_meta wrt;
 		bool ret_val;
 	}
@@ -179,26 +186,37 @@ tamed void process_head_write(svccb * sbp) {
 	parg = *(sbp->getarg<head_write_arg>());
 	warn << "Got HEAD_WRITE Request\n";
 
+	warn << "test0\n";
 	id.set_from_rpc(parg.id);
+	warn << "test1\n";
 	it = key_meta_list.find(id);
+	warn << "test2\n";
 	//If we're not the head, reject the request
-	if(it != key_meta_list.end() || !(it->second).is_head )
+	if(it != key_meta_list.end() && !(it->second).is_head )
 		sbp->replyref(false);
 
+	warn << "test3\n";
 	parent_ptr = my_node_ptr;
+	warn << "test4\n";
 	ring_decr(&parent_ptr);
-	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_node.getId())) {
+	warn << "test5\n";
+	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_id)) {
+		warn << "test6\n";
 		sbp->replyref(false);
 	} else if(it == key_meta_list.end()) {
+		warn << "test7\n";
 		wrt.committed = 0;
 		wrt.max_pending = 1;
 		wrt.is_tail = false;
 		wrt.is_head = true;
+		warn << "test8\n";
 		wrt.pending_list[1] = parg.data;
+		warn << "test9\n";
 		key_meta_list[id] = wrt;
 	}
 
-	twait { propagate(id, mkevent(ret_val)); }
+	warn << "testy\n";
+	twait { propagate(id, false, mkevent(ret_val)); }
 
 	sbp->replyref(true);
 }
@@ -207,14 +225,11 @@ tamed void process_propagate(svccb * sbp) {
 	tvars {
 		propagate_arg parg;
 		ID_Value id;
-		map<ID_Value, Node>::iterator it;
-		map<ID_Value, Node>::iterator parent_ptr;
-		map<ID_Value, key_meta>::iterator kit;
-		map<ID_Value, Node>::iterator t;
+		key_iter kit;
+		ring_iter t;
 		key_meta wrt;
 		u_int i;
 		bool in_succ;
-		bool tail;
 		bool ret_val;
 	}
 
@@ -226,9 +241,11 @@ tamed void process_propagate(svccb * sbp) {
 	kit = key_meta_list.find(id);
 
 	//Reply true if we already have a higher or equal version
-	if(kit != key_meta_list.end() || kit->second.max_pending >= parg.ver  ) {
-		sbp->replyref(true);
-		return;
+	if(kit != key_meta_list.end() && 
+		((kit->second.max_pending >= parg.ver && parg.committed == false) ||
+		 (kit->second.committed >= parg.ver && parg.committed == true))) {
+			sbp->replyref(true);
+			return;
 	}
 
 	wrt.committed = 0;
@@ -260,12 +277,19 @@ tamed void process_propagate(svccb * sbp) {
 	}
 
 	//Update meta key
-	wrt.max_pending = parg.ver;
-	wrt.pending_list[parg.ver] = parg.data;
+	if(parg.committed == true) {
+		storage->set(id, &parg.data);
+		wrt.committed = parg.ver;
+		if(wrt.max_pending < wrt.committed)
+			wrt.max_pending = wrt.committed;
+	} else {
+		wrt.max_pending = parg.ver;
+		wrt.pending_list[parg.ver] = parg.data;
+	}
 	key_meta_list[id] = wrt;
 
 	if(!wrt.is_tail) {
-		twait { propagate(id, mkevent(ret_val)); }
+		twait { propagate(id, parg.committed, mkevent(ret_val)); }
 	}
 
 }
@@ -274,14 +298,11 @@ tamed void process_back_propagate(svccb * sbp) {
 	tvars {
 		propagate_arg parg;
 		ID_Value id;
-		map<ID_Value, Node>::iterator it;
-		map<ID_Value, Node>::iterator parent_ptr;
-		map<ID_Value, key_meta>::iterator kit;
-		map<ID_Value, Node>::iterator t;
+		key_iter kit;
+		ring_iter t;
 		key_meta wrt;
 		u_int i;
 		bool in_succ;
-		bool tail;
 		bool ret_val;
 	}
 
@@ -292,9 +313,11 @@ tamed void process_back_propagate(svccb * sbp) {
 
 	kit = key_meta_list.find(id);
 	//Reply true if we already have a higher or equal version
-	if(kit != key_meta_list.end() || kit->second.max_pending >= parg.ver  ) {
-		sbp->replyref(true);
-		return;
+	if(kit != key_meta_list.end() && 
+		((kit->second.max_pending >= parg.ver && parg.committed == false) ||
+		 (kit->second.committed >= parg.ver && parg.committed == true))) {
+			sbp->replyref(true);
+			return;
 	}
 
 	wrt.committed = 0;
@@ -326,12 +349,19 @@ tamed void process_back_propagate(svccb * sbp) {
 	}
 
 	//Update meta key
-	wrt.max_pending = parg.ver;
-	wrt.pending_list[parg.ver] = parg.data;
+	if(parg.committed == true) {
+		storage->set(id, &parg.data);
+		wrt.committed = parg.ver;
+		if(wrt.max_pending < wrt.committed)
+			wrt.max_pending = wrt.committed;
+	} else {
+		wrt.max_pending = parg.ver;
+		wrt.pending_list[parg.ver] = parg.data;
+	}
 	key_meta_list[id] = wrt;
 
 	if(!wrt.is_head) {
-		twait { back_propagate(id, mkevent(ret_val)); }
+		twait { back_propagate(id, parg.committed, mkevent(ret_val)); }
 	}
 
 }
@@ -340,9 +370,8 @@ tamed void process_ack(svccb * sbp) {
 	tvars {
 		ack_arg parg;
 		ID_Value id;
-		map<ID_Value, key_meta>::iterator kit;
+		key_iter kit;
 		map<int, blob>::iterator pendit;
-		key_meta wrt;
 		bool ret_val;
 	}
 
@@ -386,10 +415,10 @@ tamed void process_ack(svccb * sbp) {
 
 }
 
-tamed void propagate(ID_Value id, cbb cb) {
+tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 	tvars {
-		map<ID_Value, key_meta>::iterator it;
-		map<ID_Value, Node>::iterator succ;
+		key_iter it;
+		ring_iter succ;
 		map<int, blob>::iterator dt_it;
 		propagate_arg arg;
 		ptr<aclnt> cli;
@@ -409,18 +438,32 @@ tamed void propagate(ID_Value id, cbb cb) {
 			return;
 		}
 
-		succ = my_node_ptr;
-		ring_incr(&succ);
-
-		dt_it = it->second.pending_list.find(it->second.max_pending);
-		if(dt_it == it->second.pending_list.end()) {
-			ret = false;
+		if(it->second.is_tail) {
+			ret = true;
 			(*cb)(ret);
 			return;
 		}
-		arg.id = id.get_rpc_id();
-		arg.ver = it->second.max_pending;
-		arg.data = dt_it->second;
+
+		succ = my_node_ptr;
+		ring_incr(&succ);
+
+		if(send_committed) {
+			arg.id = id.get_rpc_id();
+			arg.ver = it->second.committed;
+			arg.data = *(storage->get(id));
+			arg.committed = true;
+		} else {
+			dt_it = it->second.pending_list.find(it->second.max_pending);
+			if(dt_it == it->second.pending_list.end()) {
+				ret = false;
+				(*cb)(ret);
+				return;
+			}
+			arg.id = id.get_rpc_id();
+			arg.ver = it->second.max_pending;
+			arg.data = dt_it->second;
+			arg.committed = false;
+		}
 
 		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.getIp().c_str() << "\n";
 		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
@@ -444,10 +487,10 @@ tamed void propagate(ID_Value id, cbb cb) {
 
 }
 
-tamed void back_propagate(ID_Value id, cbb cb) {
+tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 	tvars {
-		map<ID_Value, key_meta>::iterator it;
-		map<ID_Value, Node>::iterator pred;
+		key_iter it;
+		ring_iter pred;
 		map<int, blob>::iterator dt_it;
 		propagate_arg arg;
 		ptr<aclnt> cli;
@@ -467,18 +510,33 @@ tamed void back_propagate(ID_Value id, cbb cb) {
 			return;
 		}
 
-		pred = my_node_ptr;
-		ring_decr(&pred);
-
-		dt_it = it->second.pending_list.find(it->second.max_pending);
-		if(dt_it == it->second.pending_list.end()) {
-			ret = false;
+		if(it->second.is_head) {
+			ret = true;
 			(*cb)(ret);
 			return;
 		}
-		arg.id = id.get_rpc_id();
-		arg.ver = it->second.max_pending;
-		arg.data = dt_it->second;
+
+		pred = my_node_ptr;
+		ring_decr(&pred);
+
+
+		if(send_committed) {
+			arg.id = id.get_rpc_id();
+			arg.ver = it->second.committed;
+			arg.data = *(storage->get(id));
+			arg.committed = true;
+		} else {
+			dt_it = it->second.pending_list.find(it->second.max_pending);
+			if(dt_it == it->second.pending_list.end()) {
+				ret = false;
+				(*cb)(ret);
+				return;
+			}
+			arg.id = id.get_rpc_id();
+			arg.ver = it->second.max_pending;
+			arg.data = dt_it->second;
+			arg.committed = false;
+		}
 
 		warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.getIp().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
@@ -504,9 +562,8 @@ tamed void back_propagate(ID_Value id, cbb cb) {
 
 tamed void ack(ID_Value id, cbb cb) {
 	tvars {
-		map<ID_Value, key_meta>::iterator it;
-		map<ID_Value, Node>::iterator pred;
-		map<int, blob>::iterator dt_it;
+		key_iter it;
+		ring_iter pred;
 		ack_arg arg;
 		ptr<aclnt> cli;
 		clnt_stat e;
@@ -586,6 +643,9 @@ void rpc_server::dispatch(svccb * sbp) {
  		case BACK_PROPAGATE:
  			process_back_propagate(sbp);
  			break;
+ 		case NO_OP:
+ 			sbp->replyref(true);
+ 			break;
 		default: {
 			sbp->reject(PROC_UNAVAIL);
 			break;
@@ -593,21 +653,21 @@ void rpc_server::dispatch(svccb * sbp) {
 	}
 }
 
-map<ID_Value, Node>::iterator ring_succ(ID_Value id) {
-	map<ID_Value, Node>::iterator it = ring.lower_bound(id);
+ring_iter ring_succ(ID_Value id) {
+	ring_iter it = ring.lower_bound(id);
 	if(it == ring.end())
 		it = ring.begin();
 	return it;
 }
 
-void ring_incr(map<ID_Value, Node>::iterator * it) {
+void ring_incr(ring_iter * it) {
 	(*it)++;
 	if( (*it)==ring.end() ) {
 		(*it) = ring.begin();
 	}
 }
 
-void ring_decr(map<ID_Value, Node>::iterator * it) {
+void ring_decr(ring_iter * it) {
 	if( (*it)==ring.begin() ) {
 		(*it) = ring.end();
 	}
@@ -616,11 +676,9 @@ void ring_decr(map<ID_Value, Node>::iterator * it) {
 
 tamed void report_bad_node(Node n) {
 	tvars {
-		int fd, i;
-		ptr<axprt_stream> x;
+		int fd;
 		ptr<aclnt> cli;
 		clnt_stat e;
-		bool ret;
 		rpc_node arg;
 	}
 
@@ -639,8 +697,7 @@ tamed void report_bad_node(Node n) {
 
 tamed static void poke_neighbor(Node n, cbb cb) {
 	tvars {
-		int fd, i;
-		ptr<axprt_stream> x;
+		int fd;
 		ptr<aclnt> cli;
 		clnt_stat e;
 		bool ret;
@@ -668,13 +725,11 @@ tamed static void poke_neighbor(Node n, cbb cb) {
 
 tamed static void poke_neighbors() {
 	tvars {
-		map<ID_Value, Node>::iterator it;
+		ring_iter it;
 		set<Node> to_poke;
 		set<Node>::iterator t;
 		deque<Node> final_list;
 		u_int i;
-		ptr<axprt_stream> x;
-		ptr<aclnt> cli;
 		ptr<bool> res;
 		rendezvous_t<u_int, ptr<bool> > rv;
 		u_int nrecv;
@@ -721,7 +776,7 @@ tamed static void start_rpc_srv(int listen_port) {
 	twait {
 		fact.run(listen_port, mkevent(ret));
 	}
-	warn << "received a return val in start_rpc_srv of: " << ret << "\n";
+	warn << "Exiting after RPC stopped. Return value was: " << ret << "\n";
 	exit(ret);
 }
 
@@ -729,7 +784,6 @@ tamed static void
 register_to_manager(int my_port, str h, int port) {
 	tvars {
 		int fd,r;
-		ptr<axprt_stream> x;
 		ptr<aclnt> cli;
 		str ip;
 		clnt_stat e, e2;
@@ -779,14 +833,80 @@ register_to_manager(int my_port, str h, int port) {
 	poke_neighbors();
 
 	delaycb(1, 0, wrap(get_updates_stub));
+	delaycb(1, 0, wrap(random_no_op_stub));
 
 }
 
-tamed void node_added(ID_Value id) {
+tamed static void node_added(Node node_changed) {
+	tvars {
+		ring_iter succ;
+		ring_iter pred;
+		key_iter k;
+		bool ret;
+		u_int i;
+	}
+	
+	warn << "Node added: " << node_changed.toString().c_str() << "\n";
+	
+	succ = my_node_ptr;
+	ring_incr(&succ);
+	pred = my_node_ptr;
+	ring_decr(&pred);
+	
+	ring[node_changed.getId()] = node_changed;
+	update_my_ptr();
+	
+	//Check if successor and propagate all keys
+	if(node_changed.getId().between(my_id, succ->first)) {
+		twait {
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+				propagate(k->first, false, mkevent(ret));
+				propagate(k->first, true, mkevent(ret));
+			}
+		}
+		return;
+	}
+	
+	//Check if predecessor and back propagate all keys that i'm not the head for
+	//   For keys that now belong to new guy, mark not head
+	if(node_changed.getId().between(pred->first, my_id)) {
+		twait {
+			//Fire off back propagates for all keys that im not still head for
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+				//Only look at keys for which we are not STILL the head
+				if(!k->first.between(node_changed.getId(), my_id)) {
+					//We were the head, but now the new guy is
+					if(k->second.is_head) {
+						k->second.is_head = false;
+					}
+					//We were the tail, but now the new guy is
+					if(k->second.is_tail) {
+						k->second.is_tail = false;
+					}
+					back_propagate(k->first, false, mkevent(ret));
+					back_propagate(k->first, true, mkevent(ret));
+				}
+			}
+		}
+		return;
+	}
+
+	for(i=0; i<(CHAIN_SIZE-2); i++) {
+		ring_decr(&pred);
+	}
+	//Check if in chain-size predecessor list and remove tail keys
+	//    Since our predecessor is now the tail
+	if(node_changed.getId().between(pred->first, my_id)) {
+		for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+			if(k->second.is_tail) {
+				k->second.is_tail = false;
+			}
+		}
+	}
 
 }
 
-tamed void node_deleted(ID_Value id) {
+tamed static void node_deleted(Node node_changed) {
 
 }
 
@@ -799,19 +919,24 @@ tamed void get_updates() {
 		u_int newest_ver;
 		rpc_memb_delta delt;
 		ID_Value id_changed;
+		Node node_changed;
 	}
 
+	if(update_running) return;
+	update_running = true;
+	
 	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
 	if( fd<0 ) {
 		fatal << "Connection to manager failed (host:" << manager_hostname << ",port:" << manager_port << "\n";
 	}
 
-	twait {	cli->call(GET_NODE_LIST_VERSION, NULL, &newest_ver, mkevent(e));
+	twait {	cli->call(GET_NODE_LIST_VERSION, NULL, &newest_ver, mkevent(e)); }
 	if(e) {
 		fatal << "Retrieving the node list from the manager failed.\n";
 	}
 
 	if(newest_ver <= known_version) {
+		update_running = false;
 		return;
 	}
 
@@ -821,41 +946,68 @@ tamed void get_updates() {
 	}
 
 	if(delt.changes.size() == 0) {
-		//Do diff with full version
+		//TODO: Do diff with full version
+		fatal << "Too lazy to implement this right now! Dying! (yay research)\n";
 	} else {
 		for(int i=0; i<delt.changes.size(); i++) {
-			id_changed.set_from_rpc(delt.changes[i].id);
+			if(delt.changes[i].ver > newest_ver)
+				newest_ver = delt.changes[i].ver;
+			node_changed.set_from_rpc_node(delt.changes[i].node);
 			if(delt.changes[i].event == EVENT_ADD) {
-				node_added(id_changed);
+				node_added(node_changed);
 			} else {
-				node_deleted(id_changed);
+				//TODO: Do deletion code
+				fatal << "Too lazy to implement this right now! Dying! (yay research)\n";
+				node_deleted(node_changed);
 			}
 		}
 	}
-
-	//get delta update
-	//if too old, make deltas ourself by doing a diff
-
-	//if node was removed,
-		//if he was my predecessor
-			//either i am head, if so mark as head
-			//or i am not head, so try to back_propagate and ack predecessor
-		//if he was my successor
-			//either i am tail, if so mark tail
-			//or i am not tail, so try to propagate successor
-	//if node was added
-		//if he is my new successor
-			//if i was tail, propagate and remove tail
-			//if i was not tail, propagate
-		//if he is my new predecessor
-			//if i was head, back_propagate, ack, and remove head
-			//if i was not head, back_propagate and ack
-
+	
+	known_version = newest_ver;
+	warn << "Updated to newest node list version: " << known_version << "\n";
+	update_running = false;
+	
 }
 
 void get_updates_stub() {
 	twait { get_updates(); }
 	delaycb(1, 0, wrap(get_updates_stub));
+}
+
+tamed static void random_no_op {
+	tvars {
+		u_int r, i;
+		ring_iter k;
+		int fd;
+		ptr<aclnt> cli;
+		clnt_stat e;
+		bool ret;
+	}
+	srand ( time(NULL) );
+	r = rand() % ring.size();
+	for(k = ring.begin(), i=0; k != ring.end(), i<r; k++, i++);
+	if(k == ring.end()) {
+		fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
+	}
+
+	//warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
+
+	twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+	if( fd<0 ) {
+		report_bad_node(k->second);
+	} else {
+		twait {	cli->call(NO_OP, NULL, &ret,  mkevent(e)); }
+		if(e || !ret) {
+			report_bad_node(k->second);
+		}
+	}
+	
+}
+
+void random_no_op_stub() {
+	twait { random_no_op(); }
+	delaycb(1, 0, wrap(random_no_op_stub));
 }
 
 tamed static

@@ -84,7 +84,7 @@ tamed void process_register(svccb * sbp) {
 	//Update history
 	rpc_memb_change new_memb;
 	new_memb.event = EVENT_ADD;
-	new_memb.id = parg.id;
+	new_memb.node = parg;
 	new_memb.ver = version_number;
 	memb_hist_cache.changes.push_back(new_memb);
 	if(memb_hist_cache.changes.size() > VERSION_HIST_CT)
@@ -137,7 +137,7 @@ tamed void process_report_bad(svccb * sbp) {
 		//Update history
 		rpc_memb_change new_memb;
 		new_memb.event = EVENT_DEL;
-		new_memb.id = parg.id;
+		new_memb.node = parg;
 		new_memb.ver = version_number;
 		memb_hist_cache.changes.push_back(new_memb);
 		if(memb_hist_cache.changes.size() > VERSION_HIST_CT)

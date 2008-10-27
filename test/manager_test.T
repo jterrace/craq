@@ -22,17 +22,13 @@ tamed static void
 connect_to_manager(str h, int port) {
 	tvars {
 		int fd;
-		unsigned int retval;
 		ptr<axprt_stream> x;
 		ptr<aclnt> cli;
 		clnt_stat e;
 		u_int ver;
-		string message, data, retstr;
 		ID_Value id;
 		Node me, ret;
 		rpc_node me_rpc;
-		int rnd_len;
-		u_int i, k;
 		rpc_node_list cur_list;
 		rpc_memb_delta delt;
 		ID_Value id_ret;
@@ -74,7 +70,7 @@ connect_to_manager(str h, int port) {
 	twait { cli->call(GET_NODE_LIST_DELTA, &ver, &delt, mkevent(e)); }
 	assert_msg(!e &&
 			   delt.changes.size()==1, "Checking delta list sanity...");
-	id_ret.set_from_rpc(delt.changes[0].id);
+	id_ret.set_from_rpc(delt.changes[0].node.id);
 	assert_msg(delt.changes[0].ver==1 &&
 			   delt.changes[0].event==EVENT_ADD &&
 			   id_ret==id, "Making sure returned delta matches...");
@@ -94,7 +90,7 @@ connect_to_manager(str h, int port) {
 	twait { cli->call(GET_NODE_LIST_DELTA, &ver, &delt, mkevent(e)); }
 	assert_msg(!e &&
 			   delt.changes.size()==1, "Checking delta list sanity...");
-	id_ret.set_from_rpc(delt.changes[0].id);
+	id_ret.set_from_rpc(delt.changes[0].node.id);
 	assert_msg(delt.changes[0].ver==2 &&
 			   delt.changes[0].event==EVENT_DEL &&
 			   id_ret==id, "Making sure returned delta matches...");

@@ -11,7 +11,6 @@ get_rpc_cli( const char * host, unsigned int port,
 		string hostname;
 		deque<conn_info>::iterator it;
 		conn_info to_ins;
-		clnt_stat e;
 	}
 	
 	hostname = host;

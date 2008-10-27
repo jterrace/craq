@@ -25,7 +25,7 @@ struct rpc_node_list {
 
 struct rpc_memb_change {
 	event_type event;
-	rpc_hash id;
+	rpc_node node;
 	unsigned ver;
 };
 
@@ -56,6 +56,7 @@ program RPC_MANAGER {
  	rpc_hash id;
  	unsigned ver;
  	blob data;
+ 	bool committed;
  };
  
  struct ack_arg {
@@ -80,6 +81,7 @@ program RPC_MANAGER {
  		bool ACK(ack_arg) = 4;
  		void POKE_NODE_LIST_VER(unsigned) = 5; 
  		bool BACK_PROPAGATE(propagate_arg) = 6;
+ 		bool NO_OP(void) = 7;
  	} = 1;
  } = 21212;
 /* ====================== */
