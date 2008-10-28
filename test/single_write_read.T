@@ -12,6 +12,8 @@
 using namespace CryptoPP;
 using namespace std;
 
+const unsigned int CHAIN_SIZE = 3;
+
 void assert_msg(bool val, const char * msg) {
 	warn << msg;
 	if(!val) {
@@ -45,7 +47,10 @@ connect_to_manager(str h, int port) {
 		map<ID_Value, Node> ring;
 		map<ID_Value, Node>::iterator it;
 		head_write_arg wrt_arg;
+		rpc_hash rd_arg;
 		bool wrt_ret;
+		blob rd_ret;
+		bool eqs;
 	}
 
 	twait { tcpconnect (h, port, mkevent(fd)); }
@@ -87,6 +92,28 @@ connect_to_manager(str h, int port) {
 	wrt_arg.data = msg.c_str();
 	twait { cli->call(HEAD_WRITE, &wrt_arg, &wrt_ret, mkevent(e)); }
 	assert_msg(!e && wrt_ret, "Writing value...");
+	
+	for(i=0; i<CHAIN_SIZE-1; i++) {
+		it++;
+		if( it==ring.end() )
+			it = ring.begin();
+	}
+	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
+	assert_msg(fd>=0, "Connecting to tail node...");
+	
+	x = axprt_stream::alloc(fd);
+	cli = aclnt::alloc(x, chain_node_1);
+	
+	rd_arg = id.get_rpc_id();
+	twait { cli->call(TAIL_READ, &rd_arg, &rd_ret, mkevent(e)); }
+	assert_msg(!e && rd_ret.size()==msg.size(), "Reading value...");
+	eqs = true;
+	for(i=0; i<rd_ret.size(); i++) {
+		if( (char)rd_ret[i] != msg[i] ) {
+			eqs = false;
+		}
+	}
+	assert_msg(eqs, "Checking read value equals write value...");
 	
 	warn << "All tests passed!\n";
 	exit(0);
