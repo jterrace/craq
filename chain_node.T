@@ -927,33 +927,25 @@ tamed static void node_added(Node node_changed) {
 	//	 For keys I was tail for and new guy is now tail, mark
 	//	 For keys that I should become the tail, become it
 	if(node_changed.getId().between(pred->first, my_id)) {
-		warn << "inside\n";
 		twait {
 			//Fire off back propagates for all keys that im not still head for
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
 				//Only look at keys for which we are not STILL the head
-				warn << "firstloop\n";
 				if(!k->first.between(node_changed.getId(), my_id)) {
-					warn << "secondbetween\n";
 					//We were the head, but now the new guy is
 					if(k->second.is_head) {
 						warn << "No longer head for " << k->first.toString().c_str() << "\n";
 						k->second.is_head = false;
 					}
 
-					warn << "back\n";
 					back_propagate(k->first, false, mkevent(ret));
-					warn << "back2\n";
 					back_propagate(k->first, true, mkevent(ret));
-					warn << "afterback\n";
 					
 					if(k->second.is_tail) {
-						warn << "istail\n";
 						//We are no longer tail so remove
 						warn << "Removing key " << k->first.toString().c_str() << "\n";
 						key_meta_list.erase(k++);
 					} else {
-						warn << "becometailcheck\n";
 						//Check if we need to become the tail
 						if(k->first.between(cs_head_pred->first, cs_head->first)) {
 							warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
@@ -963,7 +955,6 @@ tamed static void node_added(Node node_changed) {
 					}
 
 				} else {
-					warn << "inc\n";
 					k++;
 				}
 			}
