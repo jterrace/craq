@@ -160,7 +160,7 @@ tamed void process_tail_read(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
-	warn << "Got TAIL_READ Request\n";
+	//warn << "Got TAIL_READ Request\n";
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
@@ -963,7 +963,7 @@ tamed static void node_added(Node node_changed) {
 	}
 
 	warn << "Checking if node " << node_changed.getId().toString().c_str()
-		 << " is between first " << pred->first.toString().c_str()
+		 << " is between first " << cs_head->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 
 	//Check if in chain-size predecessor list and remove tail keys
@@ -988,6 +988,102 @@ tamed static void node_added(Node node_changed) {
 }
 
 tamed static void node_deleted(Node node_changed) {
+
+	tvars {
+		ring_iter succ;
+		ring_iter pred;
+		ring_iter cs_head;
+		ring_iter cs_head_pred;
+		ring_iter it;
+		key_iter k;
+		key_iter temp;
+		bool ret;
+		u_int i;
+	}
+	
+	warn << "Node deleted: " << node_changed.toString().c_str() << "\n";
+	
+	it = ring.find(node_changed.getId());
+	if(it == ring.end()) {
+		fatal << "Deleting node that we didn't know about! Should never happen... dying!\n";
+	}
+	ring.erase(it);
+	update_my_ptr();
+	
+	succ = my_node_ptr;
+	ring_incr(&succ);
+	pred = my_node_ptr;
+	ring_decr(&pred);
+	
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between me " << my_id.toString().c_str()
+		 << " and my succ " << succ->first.toString().c_str() << "\n";
+	
+	//Check if successor and propagate all keys
+	if(node_changed.getId().between(my_id, succ->first)) {
+		twait {
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+				propagate(k->first, false, mkevent(ret));
+				propagate(k->first, true, mkevent(ret));
+			}
+		}
+		return;
+	}
+	
+	cs_head = my_node_ptr;
+	for(i=0; i<(CHAIN_SIZE-1); i++) {
+		ring_decr(&cs_head);
+	}
+	cs_head_pred = cs_head;
+	ring_decr(&cs_head_pred);
+	
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between pred " << pred->first.toString().c_str()
+		 << " and me " << my_id.toString().c_str() << "\n";
+	
+	//Check if predecessor and back propagate all keys that i'm not the head for
+	//	 For keys that I should become the head, become it
+	//	 Can't search for keys that I should be the tail because I don't know about them
+	//           and I will get a propagate from the dead dude's predecessor anyway
+	if(node_changed.getId().between(pred->first, my_id)) {
+		twait {
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+				//First, find keys that I should be the head for
+				if(k->first.between(pred->first, my_id)) {
+					if(k->second.is_head == false) {
+						warn << "Becoming head for " << k->first.toString().c_str() << "\n";
+						k->second.is_head = true;
+					}
+				//For all other keys, we should back propagate
+				} else {
+					back_propagate(k->first, false, mkevent(ret));
+					back_propagate(k->first, true, mkevent(ret));
+				}
+			}
+		}
+		return;
+	}
+
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between first " << cs_head->first.toString().c_str()
+		 << " and me " << my_id.toString().c_str() << "\n";
+
+	//Check if in chain-size predecessor list and remove tail keys
+	//    Since our successor is now the tail
+	/*if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
+		for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
+			if(k->second.is_tail) {
+				warn << "Removing key " << k->first.toString().c_str() << "\n";
+				key_meta_list.erase(k++);
+			} else {
+				if(k->first.between(cs_head_pred->first, cs_head->first)) {
+					warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
+					k->second.is_tail = true;
+				}
+				k++;
+			}
+		}
+	}*/
 
 }
 
@@ -1037,8 +1133,6 @@ tamed void get_updates() {
 			if(delt.changes[i].event == EVENT_ADD) {
 				node_added(node_changed);
 			} else {
-				//TODO: Do deletion code
-				fatal << "Too lazy to implement this right now! Dying! (yay research)\n";
 				node_deleted(node_changed);
 			}
 		}
