@@ -296,13 +296,14 @@ tamed void process_propagate(svccb * sbp) {
 	}
 	if(wrt.is_tail) {
 		wrt.committed = wrt.max_pending;
+		storage->set(id, &wrt.pending_list[wrt.max_pending]);
 		wrt.pending_list.clear();
 	}
 	key_meta_list[id] = wrt;
 
 	if(!wrt.is_tail) {
-		twait { propagate(id, parg.committed, mkevent(ret_val)); }
 		sbp->replyref(true);
+		twait { propagate(id, parg.committed, mkevent(ret_val)); }
 	} else {
 		sbp->replyref(true);
 		twait { ack(id, mkevent(ret_val)); }
@@ -496,8 +497,10 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		}
 
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
-		if(e || !rpc_ret) {
+		if(e) {
 			report_bad_node(succ->second);
+			continue;
+		} else if(!rpc_ret) {
 			continue;
 		}
 
@@ -520,6 +523,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		int fd;
 		bool ret;
 		bool rpc_ret;
+		const blob * st_val;
 	}
 
 	rpc_ret = false;
@@ -541,11 +545,20 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		pred = my_node_ptr;
 		ring_decr(&pred);
 
-
 		if(send_committed) {
+			if(it->second.committed <= 0) {
+				//There is no committed version, so die
+				ret = true;
+				(*cb)(ret);
+				return;
+			}
 			arg.id = id.get_rpc_id();
 			arg.ver = it->second.committed;
-			arg.data = *(storage->get(id));
+			st_val = storage->get(id);
+			if(!st_val) {
+				fatal << "Couldn't get value from storage " << id.toString().c_str() << "! Dying...\n";
+			}
+			arg.data = *st_val;
 			arg.committed = true;
 		} else {
 			dt_it = it->second.pending_list.find(it->second.max_pending);
@@ -865,7 +878,10 @@ tamed static void node_added(Node node_changed) {
 	tvars {
 		ring_iter succ;
 		ring_iter pred;
+		ring_iter cs_head;
+		ring_iter cs_head_pred;
 		key_iter k;
+		key_iter temp;
 		bool ret;
 		u_int i;
 	}
@@ -880,6 +896,10 @@ tamed static void node_added(Node node_changed) {
 	ring[node_changed.getId()] = node_changed;
 	update_my_ptr();
 	
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between me " << my_id.toString().c_str()
+		 << " and my succ " << succ->first.toString().c_str() << "\n";
+	
 	//Check if successor and propagate all keys
 	if(node_changed.getId().between(my_id, succ->first)) {
 		twait {
@@ -891,39 +911,85 @@ tamed static void node_added(Node node_changed) {
 		return;
 	}
 	
+	cs_head = my_node_ptr;
+	for(i=0; i<(CHAIN_SIZE-1); i++) {
+		ring_decr(&cs_head);
+	}
+	cs_head_pred = cs_head;
+	ring_decr(&cs_head_pred);
+	
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between pred " << pred->first.toString().c_str()
+		 << " and me " << my_id.toString().c_str() << "\n";
+	
 	//Check if predecessor and back propagate all keys that i'm not the head for
 	//   For keys that now belong to new guy, mark not head
+	//	 For keys I was tail for and new guy is now tail, mark
+	//	 For keys that I should become the tail, become it
 	if(node_changed.getId().between(pred->first, my_id)) {
+		warn << "inside\n";
 		twait {
 			//Fire off back propagates for all keys that im not still head for
-			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
 				//Only look at keys for which we are not STILL the head
+				warn << "firstloop\n";
 				if(!k->first.between(node_changed.getId(), my_id)) {
+					warn << "secondbetween\n";
 					//We were the head, but now the new guy is
 					if(k->second.is_head) {
+						warn << "No longer head for " << k->first.toString().c_str() << "\n";
 						k->second.is_head = false;
 					}
-					//We were the tail, but now the new guy is
-					if(k->second.is_tail) {
-						k->second.is_tail = false;
-					}
+
+					warn << "back\n";
 					back_propagate(k->first, false, mkevent(ret));
+					warn << "back2\n";
 					back_propagate(k->first, true, mkevent(ret));
+					warn << "afterback\n";
+					
+					if(k->second.is_tail) {
+						warn << "istail\n";
+						//We are no longer tail so remove
+						warn << "Removing key " << k->first.toString().c_str() << "\n";
+						key_meta_list.erase(k++);
+					} else {
+						warn << "becometailcheck\n";
+						//Check if we need to become the tail
+						if(k->first.between(cs_head_pred->first, cs_head->first)) {
+							warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
+							k->second.is_tail = true;
+						}
+						k++;
+					}
+
+				} else {
+					warn << "inc\n";
+					k++;
 				}
 			}
 		}
 		return;
 	}
 
-	for(i=0; i<(CHAIN_SIZE-2); i++) {
-		ring_decr(&pred);
-	}
+	warn << "Checking if node " << node_changed.getId().toString().c_str()
+		 << " is between first " << pred->first.toString().c_str()
+		 << " and me " << my_id.toString().c_str() << "\n";
+
 	//Check if in chain-size predecessor list and remove tail keys
 	//    Since our predecessor is now the tail
-	if(node_changed.getId().between(pred->first, my_id)) {
-		for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+	//	Also, we might have to become the new tail
+	//    so any keys between predpred and pred i should be the tail for
+	if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
+		for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
 			if(k->second.is_tail) {
-				k->second.is_tail = false;
+				warn << "Removing key " << k->first.toString().c_str() << "\n";
+				key_meta_list.erase(k++);
+			} else {
+				if(k->first.between(cs_head_pred->first, cs_head->first)) {
+					warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
+					k->second.is_tail = true;
+				}
+				k++;
 			}
 		}
 	}

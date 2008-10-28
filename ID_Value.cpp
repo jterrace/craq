@@ -86,6 +86,14 @@ bool ID_Value::between(ID_Value x, ID_Value y) const {
 	return ((*this > x && *this <= y) || (*this <= y && x > y) || (y < x && x < *this));
 }
 
+bool ID_Value::betweenIncl(ID_Value x, ID_Value y) const {
+	//Three cases because the circle could have wrapped around
+	// 1. x <= this <= y
+	// 2. this <= y < x (wraps)
+	// 3. y < x <= this (wraps)
+	return ((*this >= x && *this <= y) || (*this <= y && x > y) || (y < x && x <= *this));
+}
+
 bool ID_Value::operator == (const ID_Value &other) const {
 	for(int i=0; i<20; i++)
 		if(other.id[i] != this->id[i])

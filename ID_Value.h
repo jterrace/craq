@@ -25,6 +25,7 @@ public:
 	rpc_hash get_rpc_id();
 	void set_from_rpc(rpc_hash newid);
 	bool between(ID_Value x, ID_Value y) const;
+	bool betweenIncl(ID_Value x, ID_Value y) const;
 	bool operator == (const ID_Value &other) const;
 	bool operator != (const ID_Value &other) const;
 	bool operator <  (const ID_Value &other) const;

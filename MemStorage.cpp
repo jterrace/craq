@@ -18,6 +18,7 @@ const blob* MemStorage::get(ID_Value key) {
 }
 
 bool MemStorage::set(ID_Value key, const blob* data) {
+	del(key);
 	mem_data[key] = new blob(*data);
 	return true;
 }
@@ -37,6 +38,7 @@ bool MemStorage::replace(ID_Value key, const blob* data) {
 	if(it == mem_data.end()) {
 		return false;
 	} else {
+		delete it->second;
 		mem_data[key] = new blob(*data);
 		return true;
 	}

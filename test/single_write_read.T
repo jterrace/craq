@@ -65,7 +65,12 @@ connect_to_manager(str h, int port) {
 	}
 	
 	msg = "Hello Cruel World!";
+	srand(time(NULL));
+	for(i=0; i<10; i++) {
+		msg += (char)(rand() % 26 + 65);
+	}
 	id = get_sha1(msg);
+	warn << "Message: " << msg.c_str() << "\n";
 	warn << "Id: " << id.toString().c_str() << "\n";
 	
 	it = ring.lower_bound(id);
