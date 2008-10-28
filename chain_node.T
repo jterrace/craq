@@ -20,7 +20,7 @@
 using namespace CryptoPP;
 using namespace std;
 
-const unsigned int CHAIN_SIZE = 4;
+const unsigned int CHAIN_SIZE = 3;
 
 class rpc_server : public tame::server_t {
 public:
@@ -141,8 +141,10 @@ tamed void process_query_obj_ver(svccb * sbp) {
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
-	if(it == key_meta_list.end())
+	if(it == key_meta_list.end()) {
 		sbp->replyref(NULL);
+		return;
+	}
 
 	repl.hist = (it->second).committed;
 	repl.pend = (it->second).max_pending;
@@ -162,8 +164,10 @@ tamed void process_tail_read(svccb * sbp) {
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
-	if(it == key_meta_list.end() || !(it->second).is_tail )
+	if(it == key_meta_list.end() || !(it->second).is_tail ) {
 		sbp->replyref(NULL);
+		return;
+	}
 
 	repl = storage->get(id);
 	sbp->replyref(*repl);
@@ -180,42 +184,46 @@ tamed void process_head_write(svccb * sbp) {
 	}
 
 	//Reject writes unless we can form a chain
-	if(ring.size() < CHAIN_SIZE)
+	if(ring.size() < CHAIN_SIZE) {
 		sbp->replyref(false);
+		return;
+	}
 
 	parg = *(sbp->getarg<head_write_arg>());
 	warn << "Got HEAD_WRITE Request\n";
 
-	warn << "test0\n";
 	id.set_from_rpc(parg.id);
-	warn << "test1\n";
 	it = key_meta_list.find(id);
-	warn << "test2\n";
-	//If we're not the head, reject the request
-	if(it != key_meta_list.end() && !(it->second).is_head )
-		sbp->replyref(false);
 
-	warn << "test3\n";
-	parent_ptr = my_node_ptr;
-	warn << "test4\n";
-	ring_decr(&parent_ptr);
-	warn << "test5\n";
-	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_id)) {
-		warn << "test6\n";
+	//If we're not the head, reject the request
+	if(it != key_meta_list.end() && !(it->second).is_head ) {
 		sbp->replyref(false);
+		return;
+	}
+
+	parent_ptr = my_node_ptr;
+	ring_decr(&parent_ptr);
+	
+	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_id)) {
+		//Reply false if we don't think we should be the head
+		sbp->replyref(false);
+		return;
 	} else if(it == key_meta_list.end()) {
-		warn << "test7\n";
+		//Create new key if this is the first
 		wrt.committed = 0;
 		wrt.max_pending = 1;
 		wrt.is_tail = false;
 		wrt.is_head = true;
-		warn << "test8\n";
 		wrt.pending_list[1] = parg.data;
-		warn << "test9\n";
+		key_meta_list[id] = wrt;
+	} else {
+		//Update key if this is not the first
+		wrt = it->second;
+		wrt.max_pending++;
+		wrt.pending_list[wrt.max_pending] = parg.data;
 		key_meta_list[id] = wrt;
 	}
 
-	warn << "testy\n";
 	twait { propagate(id, false, mkevent(ret_val)); }
 
 	sbp->replyref(true);
@@ -286,10 +294,18 @@ tamed void process_propagate(svccb * sbp) {
 		wrt.max_pending = parg.ver;
 		wrt.pending_list[parg.ver] = parg.data;
 	}
+	if(wrt.is_tail) {
+		wrt.committed = wrt.max_pending;
+		wrt.pending_list.clear();
+	}
 	key_meta_list[id] = wrt;
 
 	if(!wrt.is_tail) {
 		twait { propagate(id, parg.committed, mkevent(ret_val)); }
+		sbp->replyref(true);
+	} else {
+		sbp->replyref(true);
+		twait { ack(id, mkevent(ret_val)); }
 	}
 
 }
@@ -411,7 +427,13 @@ tamed void process_ack(svccb * sbp) {
 	//Erase all pending versions less than one just committed
 	kit->second.pending_list.erase(kit->second.pending_list.begin(), pendit);
 
-	twait { ack(id, mkevent(ret_val)); }
+	warn << "Updated key " << id.toString().c_str() << " to " 
+		 << kit->second.committed << "/" << kit->second.max_pending << "\n"; 
+
+	sbp->replyref(true);
+	if(!kit->second.is_head) {
+		twait { ack(id, mkevent(ret_val)); }
+	}
 
 }
 
@@ -465,7 +487,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 			arg.committed = false;
 		}
 
-		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.getIp().c_str() << "\n";
+		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -538,7 +560,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 			arg.committed = false;
 		}
 
-		warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.getIp().c_str() << "\n";
+		warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -588,7 +610,7 @@ tamed void ack(ID_Value id, cbb cb) {
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.committed;
 
-		warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.getIp().c_str() << "\n";
+		warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -597,8 +619,10 @@ tamed void ack(ID_Value id, cbb cb) {
 		}
 
 		twait {	cli->call(ACK, &arg, &rpc_ret,  mkevent(e)); }
-		if(e || !rpc_ret) {
+		if(e) {
 			report_bad_node(pred->second);
+			continue;
+		} else if(!rpc_ret) {
 			continue;
 		}
 
