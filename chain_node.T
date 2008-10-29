@@ -463,7 +463,10 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-
+		//TODO: DELETE THIS!
+		if(backoff > 10) {
+			exit(1);
+		}
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -504,7 +507,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		if( fd<0 ) {
 			report_bad_node(succ->second);
 			backoff++;
-			twait { tfork(wrap(delay, 1000)); }
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -512,11 +515,11 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(e) {
 			report_bad_node(succ->second);
 			backoff++;
-			twait { tfork(wrap(delay, 50 * backoff)); }
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
 			backoff++;
-			twait { tfork(wrap(delay, 50*backoff)); }
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -546,6 +549,10 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
+		//TODO: DELETE THIS!
+		if(backoff > 10) {
+			exit(1);
+		}
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -596,7 +603,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { tfork(wrap(delay, 50*backoff)); }
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -604,7 +611,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { tfork(wrap(delay, 50*backoff)); }
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -626,11 +633,16 @@ tamed void ack(ID_Value id, cbb cb) {
 		int fd;
 		bool ret;
 		bool rpc_ret;
+		u_int backoff;
 	}
 
+	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-
+		//TODO: DELETE THIS!
+		if(backoff > 10) {
+			exit(1);
+		}
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -649,15 +661,21 @@ tamed void ack(ID_Value id, cbb cb) {
 
 		if( fd<0 ) {
 			report_bad_node(pred->second);
+			backoff++;
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		}
 
 		twait {	cli->call(ACK, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
 			report_bad_node(pred->second);
+			backoff++;
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
 			continue;
+			backoff++;
+			twait { delaycb (0, 50 * backoff, mkevent ()); }
 		}
 
 	}
@@ -1214,7 +1232,7 @@ tamed static void random_no_op {
 			}
 		}
 	
-		twait { tfork(wrap(delay, 250)); }
+		twait { delaycb (0, 250, mkevent()); }
 	
 	}
 	
