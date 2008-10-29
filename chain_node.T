@@ -4,6 +4,7 @@
 #include <set>
 #include <deque>
 #include <sstream>
+#include <ctime>
 #include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
@@ -83,6 +84,13 @@ ID_Value my_id;
 map<ID_Value, key_meta> key_meta_list;
 
 bool update_running = false;
+ 
+void delay(long ms) {
+  timespec ts;
+  ts.tv_sec = ms / 1000;
+  ts.tv_nsec = (ms % 1000) * 1000000;
+  nanosleep(&ts, NULL);
+}
 
 str get_ip_address() {
         vec<in_addr> addrs;
@@ -449,8 +457,10 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		int fd;
 		bool ret;
 		bool rpc_ret;
+		u_int backoff;
 	}
 
+	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
 
@@ -493,14 +503,20 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 
 		if( fd<0 ) {
 			report_bad_node(succ->second);
+			backoff++;
+			twait { tfork(wrap(delay, 1000)); }
 			continue;
 		}
 
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
 			report_bad_node(succ->second);
+			backoff++;
+			twait { tfork(wrap(delay, 50 * backoff)); }
 			continue;
 		} else if(!rpc_ret) {
+			backoff++;
+			twait { tfork(wrap(delay, 50*backoff)); }
 			continue;
 		}
 
@@ -524,15 +540,12 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		bool ret;
 		bool rpc_ret;
 		const blob * st_val;
-		u_int cter;
+		u_int backoff;
 	}
 
-	cter = 0;
+	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-		if(cter++ > 10) {
-			exit(0);
-		}
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -582,14 +595,16 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 
 		if( fd<0 ) {
 			report_bad_node(pred->second);
-			warn << "continuuing because of bad get_rpc\n";
+			backoff++;
+			twait { tfork(wrap(delay, 50*backoff)); }
 			continue;
 		}
 
 		twait {	cli->call(BACK_PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
-			warn << "continuuing because of bad call\n";
+			backoff++;
+			twait { tfork(wrap(delay, 50*backoff)); }
 			continue;
 		}
 
@@ -1019,6 +1034,7 @@ tamed static void node_deleted(Node node_changed) {
 	if(it == ring.end()) {
 		fatal << "Deleting node that we didn't know about! Should never happen... dying!\n";
 	}
+	invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
 	ring.erase(it);
 	update_my_ptr();
 	
@@ -1174,31 +1190,38 @@ tamed static void random_no_op {
 		clnt_stat e;
 		bool ret;
 	}
+	
 	srand ( time(NULL) );
-	r = rand() % ring.size();
-	for(k = ring.begin(), i=0; k != ring.end(), i<r; k++, i++);
-	if(k == ring.end()) {
-		fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
-	}
-
-	//warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
-
-	twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-	if( fd<0 ) {
-		report_bad_node(k->second);
-	} else {
-		twait {	cli->call(NO_OP, NULL, &ret,  mkevent(e)); }
-		if(e || !ret) {
-			report_bad_node(k->second);
+	
+	while(1) {
+		
+		r = rand() % ring.size();
+		for(k = ring.begin(), i=0; k != ring.end(), i<r; k++, i++);
+		if(k == ring.end()) {
+			fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
 		}
+	
+		//warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
+	
+		twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	
+		if( fd<0 ) {
+			report_bad_node(k->second);
+		} else {
+			twait {	cli->call(NO_OP, NULL, &ret,  mkevent(e)); }
+			if(e || !ret) {
+				report_bad_node(k->second);
+			}
+		}
+	
+		twait { tfork(wrap(delay, 250)); }
+	
 	}
 	
 }
 
 void random_no_op_stub() {
-	twait { random_no_op(); }
-	delaycb(1, 0, wrap(random_no_op_stub));
+	random_no_op();
 }
 
 tamed static
