@@ -36,3 +36,22 @@ get_rpc_cli( const char * host, unsigned int port,
 	(*call_ret) = to_ins.cli;
 	ev->trigger(0);
 }
+
+void
+invalidate_rpc_host( const char * host,
+				unsigned int port) {
+
+	deque<conn_info>::iterator it;
+	string hostname;
+	
+	hostname = host;
+	for(it=conn_pool.begin(); it!=conn_pool.end(); ) {
+		if( it->hostname == hostname && it->port == port ) {
+			conn_pool.erase(it);
+			it = conn_pool.begin();	
+		} else {
+			it++;
+		}
+	}
+	
+}

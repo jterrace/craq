@@ -60,4 +60,5 @@ clean:
 		Node.C MemStorage.C connection_pool.C connection_pool.H \
 		test/manager_test.C test/manager_test \
 		test/single_write_read.C test/single_write_read \
+		test/multi_read_write.C test/multi_read_write \
 		*.o test/*.o

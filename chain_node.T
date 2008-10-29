@@ -524,11 +524,15 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		bool ret;
 		bool rpc_ret;
 		const blob * st_val;
+		u_int cter;
 	}
 
+	cter = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-
+		if(cter++ > 10) {
+			exit(0);
+		}
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -578,12 +582,14 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 
 		if( fd<0 ) {
 			report_bad_node(pred->second);
+			warn << "continuuing because of bad get_rpc\n";
 			continue;
 		}
 
 		twait {	cli->call(BACK_PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
+			warn << "continuuing because of bad call\n";
 			continue;
 		}
 
@@ -719,6 +725,9 @@ tamed void report_bad_node(Node n) {
 		rpc_node arg;
 	}
 
+	warn << "Reporting bad node " << n.toString().c_str() << "\n";
+	invalidate_rpc_host(n.getIp().c_str(), n.getPort());
+
 	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
 
 	if( fd<0 ) {
@@ -730,6 +739,9 @@ tamed void report_bad_node(Node n) {
 			fatal << "Problem communicating with manager! Dying...\n";
 		}
 	}
+	
+	twait { get_updates(); }
+	
 }
 
 tamed static void poke_neighbor(Node n, cbb cb) {
@@ -1043,6 +1055,7 @@ tamed static void node_deleted(Node node_changed) {
 	
 	//Check if predecessor and back propagate all keys that i'm not the head for
 	//	 For keys that I should become the head, become it
+	//	 If I am tail, unmark tail and propagate
 	//	 Can't search for keys that I should be the tail because I don't know about them
 	//           and I will get a propagate from the dead dude's predecessor anyway
 	if(node_changed.getId().between(pred->first, my_id)) {
@@ -1056,6 +1069,12 @@ tamed static void node_deleted(Node node_changed) {
 					}
 				//For all other keys, we should back propagate
 				} else {
+					if(k->second.is_tail) {
+						warn << "No longer tail for " << k->first.toString().c_str() << "\n";
+						k->second.is_tail = false;
+						propagate(k->first, false, mkevent(ret));
+						propagate(k->first, true, mkevent(ret));
+					}
 					back_propagate(k->first, false, mkevent(ret));
 					back_propagate(k->first, true, mkevent(ret));
 				}
@@ -1068,22 +1087,19 @@ tamed static void node_deleted(Node node_changed) {
 		 << " is between first " << cs_head->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 
-	//Check if in chain-size predecessor list and remove tail keys
-	//    Since our successor is now the tail
-	/*if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
-		for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
-			if(k->second.is_tail) {
-				warn << "Removing key " << k->first.toString().c_str() << "\n";
-				key_meta_list.erase(k++);
-			} else {
-				if(k->first.between(cs_head_pred->first, cs_head->first)) {
-					warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
-					k->second.is_tail = true;
+	//Check if in chain-size predecessor list and unmark tail and propagate
+	if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
+		twait {
+			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+				if(k->second.is_tail) {
+					warn << "No longer tail for " << k->first.toString().c_str() << "\n";
+					k->second.is_tail = false;
+					propagate(k->first, false, mkevent(ret));
+					propagate(k->first, true, mkevent(ret));
 				}
-				k++;
 			}
 		}
-	}*/
+	}
 
 }
 

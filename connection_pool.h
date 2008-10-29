@@ -29,5 +29,9 @@ get_rpc_cli( const char * host,
 				const rpc_program * prog, 
 				evi_t ev,
 				CLOSURE );
+				
+void
+invalidate_rpc_host( const char * host,
+				unsigned int port );
 
 #endif /*CONNECTION_POOL_H_*/
