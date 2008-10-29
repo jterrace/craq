@@ -112,33 +112,37 @@ connect_to_manager(str h, int port) {
 		ostringstream ss, sss;
 		int num_data;
 		double sum_data;
+		timeval * req_start;
+		long sec_diff;
+		long usec_diff;
 	}
 
-	warn << "Connecting to manager...\n";
+	gettimeofday(&cur_time, NULL);
+	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 	twait { tcpconnect (h, port, mkevent(fd)); }
 	if(fd < 0) {
 		fatal << "Couldn't connect to manager.\n";
 	}
-	warn << " DONE\n";
+	//warn << " DONE\n";
 	
 	x = axprt_stream::alloc(fd);
 	cli = aclnt::alloc(x, rpc_manager_1);
 	
-	warn << "Getting node list...\n";
+	//warn << "Getting node list...\n";
 	twait { cli->call(GET_NODE_LIST, NULL, &cur_list, mkevent(e)); }
 	if(e || cur_list.nodes.size() < CHAIN_SIZE) {
 		fatal << "Invalid node list!\n";
 	}
-	warn << " DONE\n";
+	//warn << " DONE\n";
 	
 	for(i=0; i<cur_list.nodes.size(); i++) {
 		ret.set_from_rpc_node(cur_list.nodes[i]);
 		ring[ret.getId()] = ret;
 	}
 	
-	warn << "Generating " << NUM_MESSAGES << " messages of size "
-		 << MESSAGE_SIZE << "...\n";
-	srand(time(NULL));
+	//warn << "Generating " << NUM_MESSAGES << " messages of size "
+	//	 << MESSAGE_SIZE << "...\n";
+	srand(9);
 	keys.resize(NUM_MESSAGES);
 	for(i=0; i<NUM_MESSAGES; i++) {
 		keys[i].msg.setsize(MESSAGE_SIZE);
@@ -155,9 +159,9 @@ connect_to_manager(str h, int port) {
 		}
 		keys[i].tail = it->second;
 	}
-	warn << " DONE\n";
+	//warn << " DONE\n";
 	
-	warn << "Writing initial messages...\n";
+	//warn << "Writing initial messages...\n";
 	for(i=0; i<NUM_MESSAGES; i++) {
 		twait { get_rpc_cli (keys[i].head.getIp().c_str(),keys[i].head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 		if(fd < 0) {
@@ -170,9 +174,9 @@ connect_to_manager(str h, int port) {
 			fatal << "Error writing key to node\n";
 		}
 	}
-	warn << " DONE\n";
+	//warn << " DONE\n";
 	
-	gettimeofday(&cur_time, NULL);
+	//gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
 
@@ -183,14 +187,20 @@ connect_to_manager(str h, int port) {
 	nsent = 0;
 	nrecv = 0;
 	window_sz = WINDOW_SIZE;
-	warn << "Starting reads...\n";
+	
+	gettimeofday(&cur_time, NULL);
+	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	
+	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
 		if((nsent-nrecv) < window_sz) {
 			// Launch new calls since there is room in the window!
 			res = New refcounted<bool> ();
 			//warn << "Reading key " << i << "\n";
-			read_it(&keys[i], mkevent(rv, i, res, *res));
+			req_start = new timeval;
+			gettimeofday(req_start, NULL);
+			read_it(&keys[i], mkevent(rv, (u_int)req_start, res, *res));
 			nsent++;
 			i++;
 			if(i > NUM_MESSAGES-1) {
@@ -198,15 +208,31 @@ connect_to_manager(str h, int port) {
 			}
 		} else {
 			// Harvest
-			twait(rv, j, res);
+			twait(rv, k, res);
+			req_start = (timeval *)k;
 			if(*res) {
 				nrecv++;
-				k++;
+				//k++;
+				gettimeofday(&cur_time, NULL);
+				warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
+				
+				sec_diff = cur_time.tv_sec - req_start->tv_sec;
+				if(sec_diff == 0) {
+					usec_diff = cur_time.tv_usec - req_start->tv_usec;
+				} else {
+					usec_diff = (1000000 - req_start->tv_usec) + cur_time.tv_usec;
+					sec_diff--;
+					sec_diff += (usec_diff / 1000000);
+					usec_diff = usec_diff % 1000000;
+				}
+				warn << sec_diff << "\t" << usec_diff << "\n";
+				
+				delete req_start;
 			} else {
 				fatal << "Bad reply from reading!\n";
 			}
 		}
-		gettimeofday(&cur_time, NULL);
+		/*gettimeofday(&cur_time, NULL);
 		if( time_diff(last_time, cur_time) >= 1.0 ) {
 			num_data++;
 			ss.str("");
@@ -218,11 +244,11 @@ connect_to_manager(str h, int port) {
 			warn <<  ss.str().c_str() << " elapsed, " << k << " replies = " << sss.str().c_str() << " replies/second\n";
 			k = 0;
 			last_time = cur_time;
-		}
+		}*/
 	}
-	ss.str("");
-	ss << (sum_data / (double)num_data);
-	warn << "Average: " << ss.str().c_str() << " replies/second\n";
+	//ss.str("");
+	//ss << (sum_data / (double)num_data);
+	//warn << "Average: " << ss.str().c_str() << " replies/second\n";
 	
 	exit(0);
 

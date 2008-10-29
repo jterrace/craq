@@ -92,6 +92,7 @@ void delay(long ms) {
   nanosleep(&ts, NULL);
 }
 
+str user_ip;
 str get_ip_address() {
         vec<in_addr> addrs;
         if (!myipaddrs(&addrs))
@@ -104,16 +105,24 @@ str get_ip_address() {
                 if (ntohl (addr->s_addr) == INADDR_LOOPBACK) {
                         loopback = addr;
                 }
-                else touse = addr;
+                else {
+                	touse = addr;
+                	str check = inet_ntoa(*touse);
+                	if(check == user_ip) {
+                		break;
+                	}
+                }
                 addr++;
         }
         if (addr >= addrs.lim () && (loopback == NULL))
                 fatal << "Cannot find my IP address.\n";
+        str ids = inet_ntoa (*touse);
         if (touse == NULL) {
                 warn << "Using loopback address as my address.\n";
                 touse = loopback;
+        } else {
+        	warn << "Using IP address: " << ids << "\n";
         }
-        str ids = inet_ntoa (*touse);
         return ids;
 }
 
@@ -1250,6 +1259,13 @@ void main2(int argc, char **argv) {
 
 	if (argc == 4 && convertint (argv[1], &listen_port)
 				  		 && convertint(argv[3], &manager_port)) {
+		user_ip = "";
+	 	manager_hostname = argv[2];
+		start_rpc_srv(listen_port);
+		register_to_manager(listen_port, manager_hostname, manager_port);
+	} else if(argc == 5 && convertint (argv[1], &listen_port)
+				  		 && convertint(argv[3], &manager_port)) {
+		user_ip = argv[4];
 	 	manager_hostname = argv[2];
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, manager_hostname, manager_port);
