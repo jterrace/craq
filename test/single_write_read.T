@@ -37,7 +37,7 @@ connect_to_manager(str h, int port) {
 		ptr<axprt_stream> x;
 		ptr<aclnt> cli;
 		clnt_stat e;
-		u_int ver, i;
+		u_int ver, i, j;
 		Node me, ret;
 		rpc_node me_rpc;
 		rpc_node_list cur_list;
@@ -69,7 +69,7 @@ connect_to_manager(str h, int port) {
 		ring[ret.getId()] = ret;
 	}
 	
-	msg = "Hello Cruel World!";
+	msg = "Hello Cruel World!!";
 	srand(time(NULL));
 	for(i=0; i<10; i++) {
 		msg += (char)(rand() % 26 + 65);
@@ -93,27 +93,30 @@ connect_to_manager(str h, int port) {
 	twait { cli->call(HEAD_WRITE, &wrt_arg, &wrt_ret, mkevent(e)); }
 	assert_msg(!e && wrt_ret, "Writing value...");
 	
-	for(i=0; i<CHAIN_SIZE-1; i++) {
+	for(j=0; j<CHAIN_SIZE; j++) {
+			
+		twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
+		assert_msg(fd>=0, "Connecting to read node...");
+		
+		x = axprt_stream::alloc(fd);
+		cli = aclnt::alloc(x, chain_node_1);
+		
+		rd_arg = id.get_rpc_id();
+		twait { cli->call(TAIL_READ, &rd_arg, &rd_ret, mkevent(e)); }
+		assert_msg(!e && rd_ret.size()==msg.size(), "Reading value...");
+		eqs = true;
+		for(i=0; i<rd_ret.size(); i++) {
+			if( (char)rd_ret[i] != msg[i] ) {
+				eqs = false;
+			}
+		}
+		assert_msg(eqs, "Checking read value equals write value...");
+
 		it++;
 		if( it==ring.end() )
-			it = ring.begin();
+			it = ring.begin();			
+			
 	}
-	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
-	assert_msg(fd>=0, "Connecting to tail node...");
-	
-	x = axprt_stream::alloc(fd);
-	cli = aclnt::alloc(x, chain_node_1);
-	
-	rd_arg = id.get_rpc_id();
-	twait { cli->call(TAIL_READ, &rd_arg, &rd_ret, mkevent(e)); }
-	assert_msg(!e && rd_ret.size()==msg.size(), "Reading value...");
-	eqs = true;
-	for(i=0; i<rd_ret.size(); i++) {
-		if( (char)rd_ret[i] != msg[i] ) {
-			eqs = false;
-		}
-	}
-	assert_msg(eqs, "Checking read value equals write value...");
 	
 	warn << "All tests passed!\n";
 	exit(0);

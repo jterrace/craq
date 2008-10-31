@@ -27,6 +27,7 @@ struct key_value {
 	blob msg;
 	Node head;
 	Node tail;
+	map<ID_Value, Node>::iterator head_it;
 };
 
 struct time_and_type {
@@ -34,6 +35,7 @@ struct time_and_type {
 	bool read;
 	int key;
 };
+map<ID_Value, Node> ring;
 
 double time_diff( timeval first, timeval second ) {
 	double sec_diff = second.tv_sec - first.tv_sec;
@@ -73,7 +75,7 @@ tamed static void write_it(key_value * to_send, cbb cb) {
 
 tamed static void read_it(key_value * to_send, cbb cb) {
 	tvars {
-		int fd, fd2, i;
+		int fd, fd2, i, rnd;
 		ptr<axprt_stream> x;
 		ptr<aclnt> cli; 
 		clnt_stat e;
@@ -81,9 +83,17 @@ tamed static void read_it(key_value * to_send, cbb cb) {
 		rpc_hash arg_hash;
 		u_int put_ret;
 		blob ret;
+		map<ID_Value, Node>::iterator it;
 	}
 	
-	twait { get_rpc_cli (to_send->tail.getIp().c_str(),to_send->tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	it = to_send->head_it;
+	rnd = rand() % CHAIN_SIZE;
+	for(i=0; i<rnd; i++) {
+		it++;
+		if(it == ring.end()) it = ring.begin();
+	}
+	
+	twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
 		(*cb)(false);
 		return;
@@ -134,7 +144,6 @@ connect_to_manager(str h, int port) {
 		rpc_memb_delta delt;
 		ID_Value id;
 		string msg;
-		map<ID_Value, Node> ring;
 		map<ID_Value, Node>::iterator it;
 		head_write_arg wrt_arg;
 		rpc_hash rd_arg;
@@ -190,6 +199,7 @@ connect_to_manager(str h, int port) {
 		it = ring.lower_bound(keys[i].id);
 		if(it == ring.end()) it = ring.begin();
 		keys[i].head = it->second;
+		keys[i].head_it = it;
 		for(j=0; j<CHAIN_SIZE-1; j++) {
 			it++;
 			if(it == ring.end()) it = ring.begin();
