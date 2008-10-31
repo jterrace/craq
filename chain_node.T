@@ -185,6 +185,7 @@ tamed void process_tail_read(svccb * sbp) {
 		int fd;
 		query_obj_ver_ret ret;
 		map<int, blob>::iterator kit;
+		blob to_rep;
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
@@ -207,8 +208,9 @@ tamed void process_tail_read(svccb * sbp) {
 			if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
 			repl = storage->get(id);
 			sbp->replyref(*repl);
+			return;
 		} else {
-			warn << "Dirty READ " << id.toString().c_str() << "\n";
+			if(BUG) warn << "Dirty READ " << id.toString().c_str() << "\n";
 	
 			//Find tail
 			rit = ring_succ(id);
@@ -216,15 +218,16 @@ tamed void process_tail_read(svccb * sbp) {
 				ring_incr(&rit);
 				
 			twait { get_rpc_cli (rit->second.getIp().c_str(), rit->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-	
+
 			if( fd<0 ) {
 				report_bad_node(rit->second);
 				sbp->replyref(NULL);
 				return;
 			}
-	
+
 			//Query tail
 			twait {	cli->call(QUERY_OBJ_VER, &parg, &ret,  mkevent(e)); }
+
 			if(e) {
 				report_bad_node(rit->second);
 				sbp->replyref(NULL);
@@ -236,11 +239,13 @@ tamed void process_tail_read(svccb * sbp) {
 					sbp->replyref(NULL);
 					return;
 				}
+
 				//Got an ACK between call
 				if(it->second.committed == it->second.max_pending) {
 					if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
 					repl = storage->get(id);
 					sbp->replyref(*repl);
+					return;
 				}
 				//See if we have the version the tail would return
 				kit = it->second.pending_list.find(ret.hist);
@@ -249,7 +254,8 @@ tamed void process_tail_read(svccb * sbp) {
 					return;
 				}
 				//Return tail's committed version
-				sbp->replyref(kit->second);
+				to_rep = kit->second;
+				sbp->replyref(to_rep);
 				return;
 			}
 		}

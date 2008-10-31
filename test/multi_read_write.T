@@ -21,6 +21,7 @@ unsigned int WINDOW_SIZE;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
 unsigned int PERC_WRITES;
+bool CRAQ;
 
 struct key_value {
 	ID_Value id;
@@ -86,27 +87,45 @@ tamed static void read_it(key_value * to_send, cbb cb) {
 		map<ID_Value, Node>::iterator it;
 	}
 	
-	it = to_send->head_it;
-	rnd = rand() % CHAIN_SIZE;
-	for(i=0; i<rnd; i++) {
-		it++;
-		if(it == ring.end()) it = ring.begin();
-	}
-	
-	twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-	if(fd < 0) {
-		(*cb)(false);
+	if(CRAQ) {
+		it = to_send->head_it;
+		rnd = rand() % CHAIN_SIZE;
+		for(i=0; i<rnd; i++) {
+			it++;
+			if(it == ring.end()) it = ring.begin();
+		}
+		
+		twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+		if(fd < 0) {
+			(*cb)(false);
+			return;
+		}
+		arg_hash = to_send->id.get_rpc_id();
+		twait {	cli->call(TAIL_READ, &arg_hash, &ret,  mkevent(e)); }
+		if(e || ret.size() != to_send->msg.size()) {
+			(*cb)(false);
+			return;
+		}
+		
+		(*cb)(true);
+		return;
+	} else {
+		twait { get_rpc_cli (to_send->tail.getIp().c_str(),to_send->tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+		if(fd < 0) {
+			(*cb)(false);
+			return;
+		}
+		arg_hash = to_send->id.get_rpc_id();
+		twait {	cli->call(TAIL_READ, &arg_hash, &ret,  mkevent(e)); }
+		if(e || ret.size() != to_send->msg.size()) {
+			(*cb)(false);
+			return;
+		}
+		
+		(*cb)(true);
 		return;
 	}
-	arg_hash = to_send->id.get_rpc_id();
-	twait {	cli->call(TAIL_READ, &arg_hash, &ret,  mkevent(e)); }
-	if(e || ret.size() != to_send->msg.size()) {
-		(*cb)(false);
-		return;
-	}
-	
-	(*cb)(true);
-	return;
+		
 	
 }
 
@@ -322,20 +341,30 @@ tamed static
 void main2(int argc, char **argv) {
 	str manager_hostname;
 	int manager_port;
+	str craq;
+	if(argc > 8) {
+		craq = argv[8];
+	}
 	
-	if (argc == 8 && convertint(argv[2], &manager_port) &&
+	if (argc == 9 && convertint(argv[2], &manager_port) &&
 		convertint(argv[3], &NUM_SECS) &&
 		convertint(argv[4], &WINDOW_SIZE) &&
 		convertint(argv[5], &MESSAGE_SIZE) &&
 		convertint(argv[6], &NUM_MESSAGES) &&
-		convertint(argv[7], &PERC_WRITES) ) {
+		convertint(argv[7], &PERC_WRITES) &&
+		(craq=="CRAQ" || craq=="CR") ) {
 	 	manager_hostname = argv[1];
+	 	if(craq == "CRAQ") {
+	 		CRAQ = true;
+	 	} else {
+	 		CRAQ = false;
+	 	}
 		connect_to_manager(manager_hostname, manager_port);
 	}
 	else {
 		fatal << "usage: single_write_read <manager_hostname> <manager_port> <num_secs>\n"
 			  << "                         <window_size> <message_size> <num_messages>\n"
-			  << "                         <perc_write>\n"
+			  << "                         <perc_write> <craq_bool>\n"
 			  << " - connects to the manager at <manager_hostname>:<manager_port> and\n"
 			  << "   generates <num_messages> messages of size <messages_size> and \n"
 			  << "   writes the messages. Then, for <num_secs> seconds, continually\n"
