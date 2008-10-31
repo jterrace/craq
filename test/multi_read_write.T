@@ -20,6 +20,7 @@ int NUM_SECS;
 unsigned int WINDOW_SIZE;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
+unsigned int PERC_WRITES;
 
 struct key_value {
 	ID_Value id;
@@ -28,10 +29,46 @@ struct key_value {
 	Node tail;
 };
 
+struct time_and_type {
+	timeval t;
+	bool read;
+	int key;
+};
+
 double time_diff( timeval first, timeval second ) {
 	double sec_diff = second.tv_sec - first.tv_sec;
 	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
 	return sec_diff;
+}
+
+tamed static void write_it(key_value * to_send, cbb cb) {
+	tvars {
+		int fd, fd2, i;
+		ptr<axprt_stream> x;
+		ptr<aclnt> cli; 
+		clnt_stat e;
+		rpc_node node;
+		head_write_arg arg;
+		u_int put_ret;
+		bool ret;
+	}
+	
+	twait { get_rpc_cli (to_send->head.getIp().c_str(),to_send->head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	if(fd < 0) {
+		(*cb)(false);
+		return;
+	}
+	arg.id = to_send->id.get_rpc_id();
+	arg.data = to_send->msg;
+	twait {	cli->call(HEAD_WRITE, &arg, &ret,  mkevent(e)); }
+	if(e || !ret) {
+		(*cb)(false);
+		return;
+	}
+	
+	(*cb)(true);
+	return;
+	
 }
 
 tamed static void read_it(key_value * to_send, cbb cb) {
@@ -112,7 +149,7 @@ connect_to_manager(str h, int port) {
 		ostringstream ss, sss;
 		int num_data;
 		double sum_data;
-		timeval * req_start;
+		time_and_type * req_start;
 		long sec_diff;
 		long usec_diff;
 	}
@@ -191,6 +228,7 @@ connect_to_manager(str h, int port) {
 	gettimeofday(&cur_time, NULL);
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 	
+	srand(time(NULL));
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
@@ -198,9 +236,17 @@ connect_to_manager(str h, int port) {
 			// Launch new calls since there is room in the window!
 			res = New refcounted<bool> ();
 			//warn << "Reading key " << i << "\n";
-			req_start = new timeval;
-			gettimeofday(req_start, NULL);
-			read_it(&keys[i], mkevent(rv, (u_int)req_start, res, *res));
+			req_start = new time_and_type;
+			gettimeofday(&(req_start->t), NULL);
+			if( rand()%100 >= PERC_WRITES ) {
+				req_start->read = true;
+				req_start->key = i;
+				read_it(&keys[i], mkevent(rv, (u_int)req_start, res, *res));
+			} else {
+				req_start->read = false;
+				req_start->key = i;
+				write_it(&keys[i], mkevent(rv, (u_int)req_start, res, *res));
+			}
 			nsent++;
 			i++;
 			if(i > NUM_MESSAGES-1) {
@@ -209,18 +255,18 @@ connect_to_manager(str h, int port) {
 		} else {
 			// Harvest
 			twait(rv, k, res);
-			req_start = (timeval *)k;
+			req_start = (time_and_type *)k;
 			if(*res) {
 				nrecv++;
 				//k++;
 				gettimeofday(&cur_time, NULL);
+				warn << (req_start->read ? "R" : "W") << "\t";
 				warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
-				
-				sec_diff = cur_time.tv_sec - req_start->tv_sec;
+				sec_diff = cur_time.tv_sec - req_start->t.tv_sec;
 				if(sec_diff == 0) {
-					usec_diff = cur_time.tv_usec - req_start->tv_usec;
+					usec_diff = cur_time.tv_usec - req_start->t.tv_usec;
 				} else {
-					usec_diff = (1000000 - req_start->tv_usec) + cur_time.tv_usec;
+					usec_diff = (1000000 - req_start->t.tv_usec) + cur_time.tv_usec;
 					sec_diff--;
 					sec_diff += (usec_diff / 1000000);
 					usec_diff = usec_diff % 1000000;
@@ -229,7 +275,15 @@ connect_to_manager(str h, int port) {
 				
 				delete req_start;
 			} else {
-				fatal << "Bad reply from reading!\n";
+				
+				//retry
+				res = New refcounted<bool> ();
+				if( req_start->read ) {
+					read_it(&keys[req_start->key], mkevent(rv, (u_int)req_start, res, *res));
+				} else {
+					write_it(&keys[req_start->key], mkevent(rv, (u_int)req_start, res, *res));
+				}
+				
 			}
 		}
 		/*gettimeofday(&cur_time, NULL);
@@ -259,22 +313,24 @@ void main2(int argc, char **argv) {
 	str manager_hostname;
 	int manager_port;
 	
-	if (argc == 7 && convertint(argv[2], &manager_port) &&
+	if (argc == 8 && convertint(argv[2], &manager_port) &&
 		convertint(argv[3], &NUM_SECS) &&
 		convertint(argv[4], &WINDOW_SIZE) &&
 		convertint(argv[5], &MESSAGE_SIZE) &&
-		convertint(argv[6], &NUM_MESSAGES) ) {
+		convertint(argv[6], &NUM_MESSAGES) &&
+		convertint(argv[7], &PERC_WRITES) ) {
 	 	manager_hostname = argv[1];
 		connect_to_manager(manager_hostname, manager_port);
 	}
 	else {
 		fatal << "usage: single_write_read <manager_hostname> <manager_port> <num_secs>\n"
 			  << "                         <window_size> <message_size> <num_messages>\n"
+			  << "                         <perc_write>\n"
 			  << " - connects to the manager at <manager_hostname>:<manager_port> and\n"
 			  << "   generates <num_messages> messages of size <messages_size> and \n"
 			  << "   writes the messages. Then, for <num_secs> seconds, continually\n"
-			  << "   reads the keys back, sending <window_size> requests before\n"
-			  << "   waiting for a response.\n";
+			  << "   reads or writes the keys back (based on <perc_write>, sending\n"
+			  << "   <window_size> requests before waiting for a response.\n";
 		exit(1);
 	}
 }

@@ -18,10 +18,13 @@
 #include "Storage.h"
 #include "connection_pool.H"
 
+#define BUG 0
+
 using namespace CryptoPP;
 using namespace std;
 
 const unsigned int CHAIN_SIZE = 3;
+bool CRAQ;
 
 class rpc_server : public tame::server_t {
 public:
@@ -44,6 +47,7 @@ struct key_meta {
 	unsigned int committed;
 	unsigned int max_pending;
 	map<int, blob> pending_list;
+	map<int, deque<svccb *> > write_reqs;
 	bool is_head;
 	bool is_tail;
 };
@@ -136,7 +140,7 @@ ID_Value get_sha1(string msg)
 
 tamed void process_poke_node_list_ver(svccb * sbp) {
 	unsigned parg = *(sbp->getarg<unsigned>());
-	warn << "Got POKE_NODE_LIST_VER Request\n";
+	if(BUG) warn << "Got POKE_NODE_LIST_VER Request\n";
 
 	if(parg > known_version) {
 		get_updates();
@@ -154,7 +158,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
-	warn << "Got QUERY_OBJ Request\n";
+	if(BUG) warn << "Got QUERY_OBJ Request\n";
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
@@ -177,7 +181,7 @@ tamed void process_tail_read(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
-	//warn << "Got TAIL_READ Request\n";
+	if(BUG) warn << "Got TAIL_READ Request\n";
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
@@ -207,7 +211,7 @@ tamed void process_head_write(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<head_write_arg>());
-	warn << "Got HEAD_WRITE Request\n";
+	if(BUG) warn << "Got HEAD_WRITE Request\n";
 
 	id.set_from_rpc(parg.id);
 	it = key_meta_list.find(id);
@@ -232,18 +236,18 @@ tamed void process_head_write(svccb * sbp) {
 		wrt.is_tail = false;
 		wrt.is_head = true;
 		wrt.pending_list[1] = parg.data;
+		wrt.write_reqs[1].push_back(sbp);
 		key_meta_list[id] = wrt;
 	} else {
 		//Update key if this is not the first
 		wrt = it->second;
 		wrt.max_pending++;
 		wrt.pending_list[wrt.max_pending] = parg.data;
+		wrt.write_reqs[wrt.max_pending].push_back(sbp);
 		key_meta_list[id] = wrt;
 	}
 
 	twait { propagate(id, false, mkevent(ret_val)); }
-
-	sbp->replyref(true);
 }
 
 tamed void process_propagate(svccb * sbp) {
@@ -259,7 +263,7 @@ tamed void process_propagate(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<propagate_arg>());
-	warn << "Got PROPAGATE Request\n";
+	if(BUG) warn << "Got PROPAGATE Request\n";
 
 	id.set_from_rpc(parg.id);
 
@@ -341,7 +345,7 @@ tamed void process_back_propagate(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<propagate_arg>());
-	warn << "Got BACK_PROPAGATE Request\n";
+	if(BUG) warn << "Got BACK_PROPAGATE Request\n";
 
 	id.set_from_rpc(parg.id);
 
@@ -406,11 +410,13 @@ tamed void process_ack(svccb * sbp) {
 		ID_Value id;
 		key_iter kit;
 		map<int, blob>::iterator pendit;
+		map<int, deque<svccb *> >::iterator it;
+		deque<svccb *>::iterator repls;
 		bool ret_val;
 	}
 
 	parg = *(sbp->getarg<ack_arg>());
-	warn << "Got ACK Request\n";
+	if(BUG) warn << "Got ACK Request\n";
 
 	id.set_from_rpc(parg.id);
 
@@ -440,12 +446,23 @@ tamed void process_ack(svccb * sbp) {
 		return;
 	}
 
+	//Send replies for head writes that we just acked before erasing
+	for(it = kit->second.write_reqs.begin(); it != kit->second.write_reqs.end(); ) {
+		for(repls = it->second.begin(); repls != it->second.end(); repls++) {
+			if(BUG) warn << "Replying to write request\n";
+			(*repls)->replyref(true);
+		}
+		it->second.clear();
+		kit->second.write_reqs.erase(it++);
+		if(it->first > parg.ver) break;
+	}
+
 	//Update committed version number
 	kit->second.committed = parg.ver;
 	//Erase all pending versions less than one just committed
 	kit->second.pending_list.erase(kit->second.pending_list.begin(), pendit);
 
-	warn << "Updated key " << id.toString().c_str() << " to " 
+	if(BUG) warn << "Updated key " << id.toString().c_str() << " to " 
 		 << kit->second.committed << "/" << kit->second.max_pending << "\n"; 
 
 	sbp->replyref(true);
@@ -510,7 +527,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 			arg.committed = false;
 		}
 
-		warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.toString().c_str() << "\n";
+		if(BUG) warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -606,7 +623,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 			arg.committed = false;
 		}
 
-		warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
+		if(BUG) warn << "Back Propagating ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -665,7 +682,7 @@ tamed void ack(ID_Value id, cbb cb) {
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.committed;
 
-		warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
+		if(BUG) warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
 		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
@@ -767,7 +784,7 @@ tamed void report_bad_node(Node n) {
 		rpc_node arg;
 	}
 
-	warn << "Reporting bad node " << n.toString().c_str() << "\n";
+	if(BUG) warn << "Reporting bad node " << n.toString().c_str() << "\n";
 	invalidate_rpc_host(n.getIp().c_str(), n.getPort());
 
 	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
@@ -794,7 +811,7 @@ tamed static void poke_neighbor(Node n, cbb cb) {
 		bool ret;
 	}
 
-	warn << "Poking neighbor " << n.toString().c_str() << "\n";
+	if(BUG) warn << "Poking neighbor " << n.toString().c_str() << "\n";
 	twait { get_rpc_cli (n.getIp().c_str(), n.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 	if( fd<0 ) {
@@ -940,7 +957,7 @@ tamed static void node_added(Node node_changed) {
 		u_int i;
 	}
 	
-	warn << "Node added: " << node_changed.toString().c_str() << "\n";
+	if(BUG) warn << "Node added: " << node_changed.toString().c_str() << "\n";
 	
 	succ = my_node_ptr;
 	ring_incr(&succ);
@@ -950,7 +967,7 @@ tamed static void node_added(Node node_changed) {
 	ring[node_changed.getId()] = node_changed;
 	update_my_ptr();
 	
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between me " << my_id.toString().c_str()
 		 << " and my succ " << succ->first.toString().c_str() << "\n";
 	
@@ -972,7 +989,7 @@ tamed static void node_added(Node node_changed) {
 	cs_head_pred = cs_head;
 	ring_decr(&cs_head_pred);
 	
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between pred " << pred->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 	
@@ -988,7 +1005,7 @@ tamed static void node_added(Node node_changed) {
 				if(!k->first.between(node_changed.getId(), my_id)) {
 					//We were the head, but now the new guy is
 					if(k->second.is_head) {
-						warn << "No longer head for " << k->first.toString().c_str() << "\n";
+						if(BUG) warn << "No longer head for " << k->first.toString().c_str() << "\n";
 						k->second.is_head = false;
 					}
 
@@ -997,12 +1014,12 @@ tamed static void node_added(Node node_changed) {
 					
 					if(k->second.is_tail) {
 						//We are no longer tail so remove
-						warn << "Removing key " << k->first.toString().c_str() << "\n";
+						if(BUG) warn << "Removing key " << k->first.toString().c_str() << "\n";
 						key_meta_list.erase(k++);
 					} else {
 						//Check if we need to become the tail
 						if(k->first.between(cs_head_pred->first, cs_head->first)) {
-							warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
+							if(BUG) warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
 							k->second.is_tail = true;
 						}
 						k++;
@@ -1016,7 +1033,7 @@ tamed static void node_added(Node node_changed) {
 		return;
 	}
 
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between first " << cs_head->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 
@@ -1027,11 +1044,11 @@ tamed static void node_added(Node node_changed) {
 	if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
 		for(k = key_meta_list.begin(); k != key_meta_list.end(); ) {
 			if(k->second.is_tail) {
-				warn << "Removing key " << k->first.toString().c_str() << "\n";
+				if(BUG) warn << "Removing key " << k->first.toString().c_str() << "\n";
 				key_meta_list.erase(k++);
 			} else {
 				if(k->first.between(cs_head_pred->first, cs_head->first)) {
-					warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
+					if(BUG) warn << "Becoming tail for " << k->first.toString().c_str() << "\n";
 					k->second.is_tail = true;
 				}
 				k++;
@@ -1055,7 +1072,7 @@ tamed static void node_deleted(Node node_changed) {
 		u_int i;
 	}
 	
-	warn << "Node deleted: " << node_changed.toString().c_str() << "\n";
+	if(BUG) warn << "Node deleted: " << node_changed.toString().c_str() << "\n";
 	
 	it = ring.find(node_changed.getId());
 	if(it == ring.end()) {
@@ -1070,7 +1087,7 @@ tamed static void node_deleted(Node node_changed) {
 	pred = my_node_ptr;
 	ring_decr(&pred);
 	
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between me " << my_id.toString().c_str()
 		 << " and my succ " << succ->first.toString().c_str() << "\n";
 	
@@ -1092,7 +1109,7 @@ tamed static void node_deleted(Node node_changed) {
 	cs_head_pred = cs_head;
 	ring_decr(&cs_head_pred);
 	
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between pred " << pred->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 	
@@ -1107,13 +1124,13 @@ tamed static void node_deleted(Node node_changed) {
 				//First, find keys that I should be the head for
 				if(k->first.between(pred->first, my_id)) {
 					if(k->second.is_head == false) {
-						warn << "Becoming head for " << k->first.toString().c_str() << "\n";
+						if(BUG) warn << "Becoming head for " << k->first.toString().c_str() << "\n";
 						k->second.is_head = true;
 					}
 				//For all other keys, we should back propagate
 				} else {
 					if(k->second.is_tail) {
-						warn << "No longer tail for " << k->first.toString().c_str() << "\n";
+						if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
 						k->second.is_tail = false;
 						propagate(k->first, false, mkevent(ret));
 						propagate(k->first, true, mkevent(ret));
@@ -1126,7 +1143,7 @@ tamed static void node_deleted(Node node_changed) {
 		return;
 	}
 
-	warn << "Checking if node " << node_changed.getId().toString().c_str()
+	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between first " << cs_head->first.toString().c_str()
 		 << " and me " << my_id.toString().c_str() << "\n";
 
@@ -1135,7 +1152,7 @@ tamed static void node_deleted(Node node_changed) {
 		twait {
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
 				if(k->second.is_tail) {
-					warn << "No longer tail for " << k->first.toString().c_str() << "\n";
+					if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
 					k->second.is_tail = false;
 					propagate(k->first, false, mkevent(ret));
 					propagate(k->first, true, mkevent(ret));
@@ -1198,7 +1215,7 @@ tamed void get_updates() {
 	}
 	
 	known_version = newest_ver;
-	warn << "Updated to newest node list version: " << known_version << "\n";
+	if(BUG) warn << "Updated to newest node list version: " << known_version << "\n";
 	update_running = false;
 	
 }
@@ -1228,7 +1245,7 @@ tamed static void random_no_op {
 			fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
 		}
 	
-		//warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
+		if(BUG) warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
 	
 		twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	
@@ -1255,23 +1272,36 @@ tamed static
 void main2(int argc, char **argv) {
 	int listen_port;
 	str manager_hostname;
+	str type;
 	int manager_port;
+	
+	if(argc > 4) type = argv[1];
+	if(type == "CRAQ") {
+		CRAQ = true;
+	} else {
+		CRAQ = false;
+	}
 
-	if (argc == 4 && convertint (argv[1], &listen_port)
-				  		 && convertint(argv[3], &manager_port)) {
+	if (argc == 5 && convertint (argv[2], &listen_port)
+				  		 && convertint(argv[4], &manager_port) &&
+				  		 (type=="CR" || type=="CRAQ") ) {
 		user_ip = "";
-	 	manager_hostname = argv[2];
+	 	manager_hostname = argv[3];
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, manager_hostname, manager_port);
-	} else if(argc == 5 && convertint (argv[1], &listen_port)
-				  		 && convertint(argv[3], &manager_port)) {
-		user_ip = argv[4];
-	 	manager_hostname = argv[2];
+	} else if(argc == 6 && convertint (argv[2], &listen_port)
+				  		 && convertint(argv[4], &manager_port) &&
+				  		 (type=="CR" || type=="CRAQ")) {
+		user_ip = argv[5];
+	 	manager_hostname = argv[3];
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, manager_hostname, manager_port);
 	} else {
-		fatal << "usage: chain_node <listen_port> <manager_hostname> <manager_port>\n"
-			  << "               - connects to manager and joins the network\n";
+		fatal << "usage: chain_node <type> <listen_port> <manager_hostname>\n"
+			  << "<manager_port> [<ip_address>]\n"
+			  << "  - connects to manager and joins the network. <type> can\n"
+			  << "    be CR or CRAQ. Optionally set <ip_address> if multiple\n"
+			  << "    interfaces.\n";
 		exit(1);
 	}
 }
