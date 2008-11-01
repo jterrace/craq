@@ -14,25 +14,53 @@ get_rpc_cli( const char * host, unsigned int port,
 	}
 	
 	hostname = host;
-	for(it=conn_pool.begin(); it!=conn_pool.end(); it++) {
-		if( it->hostname == hostname && it->port == port && (prog == it->prog) && (it->fd >= 0) ) {
-			(*call_ret) = it->cli;
-			ev->trigger(0);
-			return;
+	for(it=conn_pool.begin(); it!=conn_pool.end(); ) {
+		if( (it->hostname == hostname) && (it->port == port) && (prog == it->prog) ) {
+			if( it->fd >= 0 ) {
+				(*call_ret) = it->cli;
+				ev->trigger(0);
+				return;
+			} else {
+				//try and wait and see if the other function call will get it
+				twait { delaycb (0, 10, mkevent ()); }
+				it = conn_pool.begin();
+			}
+		} else {
+			it++;
 		}
 	}
+	
+	//Set initial host info so others dont also try and connect at the same time
+	to_ins.hostname = host;
+	to_ins.port = port;
+	to_ins.prog = prog;
+	to_ins.fd = -1;
+	conn_pool.push_back(to_ins);
+	
+	//try and connect
 	twait { tcpconnect (host, port, mkevent(fd)); }
+	
+	//erase the old one with the -1 file descriptor
+	for(it=conn_pool.begin(); it!=conn_pool.end(); it++) {
+		if( (it->hostname == hostname) && (it->port == port) && (prog == it->prog) && (it->fd == -1) ) {
+			conn_pool.erase(it);
+			break;
+		}
+	}
+	
+	//return if file descriptor is bad
 	if(fd < 0) {
 		ev->trigger(fd);
 		return;
 	}
+	
+	//insert real one
 	to_ins.x = axprt_stream::alloc(fd);
 	to_ins.cli = aclnt::alloc(to_ins.x, *prog);
-	to_ins.hostname = host;
-	to_ins.port = port;
 	to_ins.fd = fd;
-	to_ins.prog = prog;
 	conn_pool.push_back(to_ins);
+	
+	//return good value
 	(*call_ret) = to_ins.cli;
 	ev->trigger(0);
 }

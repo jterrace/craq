@@ -261,6 +261,7 @@ connect_to_manager(str h, int port) {
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
+		gettimeofday(&cur_time, NULL);
 		if((nsent-nrecv) < window_sz) {
 			// Launch new calls since there is room in the window!
 			res = New refcounted<bool> ();
@@ -288,7 +289,6 @@ connect_to_manager(str h, int port) {
 			if(*res) {
 				nrecv++;
 				//k++;
-				gettimeofday(&cur_time, NULL);
 				warn << (req_start->read ? "R" : "W") << "\t";
 				warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
 				sec_diff = cur_time.tv_sec - req_start->t.tv_sec;
@@ -306,6 +306,7 @@ connect_to_manager(str h, int port) {
 			} else {
 				
 				//retry
+				//warn << "retrying\n";
 				res = New refcounted<bool> ();
 				if( req_start->read ) {
 					read_it(&keys[req_start->key], mkevent(rv, (u_int)req_start, res, *res));
