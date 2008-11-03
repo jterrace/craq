@@ -21,6 +21,7 @@ unsigned int WINDOW_SIZE;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
 unsigned int PERC_WRITES;
+unsigned int DELAY_TIME;
 bool CRAQ;
 
 struct key_value {
@@ -303,6 +304,9 @@ connect_to_manager(str h, int port) {
 				warn << sec_diff << "\t" << usec_diff << "\n";
 				
 				delete req_start;
+				if(DELAY_TIME > 0) {
+					twait { delaycb (0, 1000000 * DELAY_TIME, mkevent ()); }
+				}
 			} else {
 				
 				//retry
@@ -340,20 +344,25 @@ connect_to_manager(str h, int port) {
 
 tamed static
 void main2(int argc, char **argv) {
-	str manager_hostname;
-	int manager_port;
-	str craq;
+	tvars {
+		str manager_hostname;
+		int manager_port;
+		str craq;
+		int i;
+	}
+	
 	if(argc > 8) {
 		craq = argv[8];
 	}
 	
-	if (argc == 9 && convertint(argv[2], &manager_port) &&
+	if (argc == 10 && convertint(argv[2], &manager_port) &&
 		convertint(argv[3], &NUM_SECS) &&
 		convertint(argv[4], &WINDOW_SIZE) &&
 		convertint(argv[5], &MESSAGE_SIZE) &&
 		convertint(argv[6], &NUM_MESSAGES) &&
 		convertint(argv[7], &PERC_WRITES) &&
-		(craq=="CRAQ" || craq=="CR") ) {
+		(craq=="CRAQ" || craq=="CR") &&
+		convertint(argv[9], &DELAY_TIME) ) {
 	 	manager_hostname = argv[1];
 	 	if(craq == "CRAQ") {
 	 		CRAQ = true;
@@ -365,7 +374,7 @@ void main2(int argc, char **argv) {
 	else {
 		fatal << "usage: single_write_read <manager_hostname> <manager_port> <num_secs>\n"
 			  << "                         <window_size> <message_size> <num_messages>\n"
-			  << "                         <perc_write> <craq_bool>\n"
+			  << "                         <perc_write> <craq_bool> <delay_time>\n"
 			  << " - connects to the manager at <manager_hostname>:<manager_port> and\n"
 			  << "   generates <num_messages> messages of size <messages_size> and \n"
 			  << "   writes the messages. Then, for <num_secs> seconds, continually\n"

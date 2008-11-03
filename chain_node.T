@@ -606,7 +606,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		if( fd<0 ) {
 			report_bad_node(succ->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -614,11 +614,11 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(e) {
 			report_bad_node(succ->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -698,7 +698,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -706,7 +706,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -757,7 +757,7 @@ tamed void ack(ID_Value id, cbb cb) {
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -765,12 +765,12 @@ tamed void ack(ID_Value id, cbb cb) {
 		if(e) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
 			continue;
 			backoff++;
-			twait { delaycb (0, 50 * backoff, mkevent ()); }
+			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 		}
 
 	}
@@ -1327,7 +1327,7 @@ tamed static void random_no_op {
 			}
 		}
 	
-		twait { delaycb (0, 250, mkevent()); }
+		twait { delaycb (0, 250 * 1000000, mkevent()); }
 	
 	}
 	

@@ -1,7 +1,7 @@
 TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
 CC=g++
-CFLAGS= -g -O0 -static -Wall -Werror -Wno-unused -Wno-sign-compare
+CFLAGS= -g -static -Wall -Werror -Wno-unused -Wno-sign-compare
 INCLUDE= -I/usr/local/include/sfslite -I/usr/include/crypto++
 SFS_LIB_DIR=/usr/local/lib/sfslite
 LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++
