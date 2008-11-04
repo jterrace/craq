@@ -1,14 +1,14 @@
 TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
-CC=g++
-CFLAGS= -g -static -Wall -Werror -Wno-unused -Wno-sign-compare
+CC=g++-4.2
+CFLAGS= -g -O1 -static -Wall -Werror -Wno-unused -Wno-sign-compare
 INCLUDE= -I/usr/local/include/sfslite -I/usr/include/crypto++
 SFS_LIB_DIR=/usr/local/lib/sfslite
 LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++
 OBJS=craq_rpc.o ID_Value.o Node.o MemStorage.o connection_pool.o
 
 all: manager chain_node test
-test: manager_test single_write_read multi_read_write
+test: manager_test single_write_read multi_read_write writer
 
 craq_rpc.o: craq_rpc.x
 	$(RPCC) -h -o craq_rpc.h craq_rpc.x
@@ -53,6 +53,11 @@ multi_read_write: test/multi_read_write.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/multi_read_write.o -c test/multi_read_write.C
 	$(CC) $(CFLAGS) -o test/multi_read_write test/multi_read_write.o $(OBJS) $(LIBS)
 	
+writer: test/writer.T $(OBJS)
+	$(TAME) -o test/writer.C test/writer.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/writer.o -c test/writer.C
+	$(CC) $(CFLAGS) -o test/writer test/writer.o $(OBJS) $(LIBS)
+	
 clean:
 	rm -f chain_node chain_node.C\
 		manager manager.C \
@@ -61,4 +66,5 @@ clean:
 		test/manager_test.C test/manager_test \
 		test/single_write_read.C test/single_write_read \
 		test/multi_read_write.C test/multi_read_write \
+		test/writer.C test/writer \
 		*.o test/*.o
