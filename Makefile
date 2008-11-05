@@ -8,7 +8,7 @@ LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libar
 OBJS=craq_rpc.o ID_Value.o Node.o MemStorage.o connection_pool.o
 
 all: manager chain_node test
-test: manager_test single_write_read multi_read_write writer
+test: manager_test single_write_read multi_read_write writer reader
 
 craq_rpc.o: craq_rpc.x
 	$(RPCC) -h -o craq_rpc.h craq_rpc.x
@@ -58,6 +58,11 @@ writer: test/writer.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/writer.o -c test/writer.C
 	$(CC) $(CFLAGS) -o test/writer test/writer.o $(OBJS) $(LIBS)
 	
+reader: test/reader.T $(OBJS)
+	$(TAME) -o test/reader.C test/reader.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/reader.o -c test/reader.C
+	$(CC) $(CFLAGS) -o test/reader test/reader.o $(OBJS) $(LIBS)
+	
 clean:
 	rm -f chain_node chain_node.C\
 		manager manager.C \
@@ -67,4 +72,5 @@ clean:
 		test/single_write_read.C test/single_write_read \
 		test/multi_read_write.C test/multi_read_write \
 		test/writer.C test/writer \
+		test/reader.C test/reader \
 		*.o test/*.o

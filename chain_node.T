@@ -58,6 +58,7 @@ typedef map<ID_Value, key_meta>::iterator key_iter;
 static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
 static void process_query_obj_ver(svccb * sbp, CLOSURE);
 static void process_tail_read(svccb * sbp, CLOSURE);
+static void process_tail_read_ex(svccb * sbp, CLOSURE);
 static void process_head_write(svccb * sbp, CLOSURE);
 static void process_propagate(svccb * sbp, CLOSURE);
 static void propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
@@ -268,6 +269,112 @@ tamed void process_tail_read(svccb * sbp) {
 	
 		repl = storage->get(id);
 		sbp->replyref(*repl);
+	}
+}
+
+tamed void process_tail_read_ex(svccb * sbp) {
+	tvars {
+		rpc_hash parg;
+		const blob * repl;
+		ID_Value id;
+		key_iter it;
+		ring_iter rit;
+		int i;
+		ptr<aclnt> cli;
+		clnt_stat e;
+		int fd;
+		query_obj_ver_ret ret;
+		map<int, blob>::iterator kit;
+		tail_read_ex_ret to_rep;
+	}
+
+	parg = *(sbp->getarg<rpc_hash>());
+	if(BUG) warn << "Got TAIL_READ_EX Request\n";
+
+	id.set_from_rpc(parg);
+
+	it = key_meta_list.find(id);
+	
+	if(CRAQ) {
+		
+		//CRAQ tail read
+		
+		if(it == key_meta_list.end() ) {
+			sbp->replyref(NULL);
+			return;
+		}
+		
+		if(it->second.committed == it->second.max_pending) {
+			if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
+			repl = storage->get(id);
+			to_rep.data = *repl;
+			to_rep.dirty = false;
+			sbp->replyref(to_rep);
+			return;
+		} else {
+			if(BUG) warn << "Dirty READ " << id.toString().c_str() << "\n";
+	
+			//Find tail
+			rit = ring_succ(id);
+			for(i=0; i<CHAIN_SIZE-1; i++)
+				ring_incr(&rit);
+				
+			twait { get_rpc_cli (rit->second.getIp().c_str(), rit->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+			if( fd<0 ) {
+				report_bad_node(rit->second);
+				sbp->replyref(NULL);
+				return;
+			}
+
+			//Query tail
+			twait {	cli->call(QUERY_OBJ_VER, &parg, &ret,  mkevent(e)); }
+
+			if(e) {
+				report_bad_node(rit->second);
+				sbp->replyref(NULL);
+				return;
+			} else {
+				//Refetch key
+				it = key_meta_list.find(id);
+				if(it == key_meta_list.end() ) {
+					sbp->replyref(NULL);
+					return;
+				}
+
+				//Got an ACK between call
+				if(it->second.committed == it->second.max_pending) {
+					if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
+					repl = storage->get(id);
+					to_rep.data = *repl;
+					to_rep.dirty = true;
+					sbp->replyref(to_rep);
+					return;
+				}
+				//See if we have the version the tail would return
+				kit = it->second.pending_list.find(ret.hist);
+				if(kit == it->second.pending_list.end()) {
+					sbp->replyref(NULL);
+					return;
+				}
+				//Return tail's committed version
+				to_rep.data = kit->second;
+				to_rep.dirty = true;
+				sbp->replyref(to_rep);
+				return;
+			}
+		}
+	} else {
+		//CR Read
+		if(it == key_meta_list.end() || !(it->second).is_tail ) {
+			sbp->replyref(NULL);
+			return;
+		}
+	
+		repl = storage->get(id);
+		to_rep.data = *repl;
+		to_rep.dirty = false;
+		sbp->replyref(to_rep);
 	}
 }
 
@@ -795,6 +902,9 @@ void rpc_server::dispatch(svccb * sbp) {
 	switch(p) {
 		case TAIL_READ:
 			process_tail_read(sbp);
+			break;
+		case TAIL_READ_EX:
+			process_tail_read_ex(sbp);
 			break;
  		case HEAD_WRITE:
  			process_head_write(sbp);
