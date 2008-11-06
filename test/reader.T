@@ -72,7 +72,12 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 		}
 		arg_hash = to_send->id.get_rpc_id();
 		twait {	cli->call(TAIL_READ_EX, &arg_hash, &ret,  mkevent(e)); }
-		if(e || ret.data.size() != to_send->msg.size()) {
+		if(e) {
+			invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
+			(*cb)(false);
+			return;
+		}
+		if(ret.data.size() != to_send->msg.size()) {
 			(*cb)(false);
 			return;
 		}

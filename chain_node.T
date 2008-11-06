@@ -28,7 +28,7 @@ bool CRAQ;
 
 class rpc_server : public tame::server_t {
 public:
-  rpc_server (int fd, int v) : tame::server_t (fd, v) {}
+  rpc_server (int fd, int v) : tame::server_t (fd, v) { tcp_nodelay(fd); }
   const rpc_program &get_prog () const { return chain_node_1; }
   void dispatch (svccb *sbp);
 };
