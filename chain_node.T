@@ -18,7 +18,7 @@
 #include "Storage.h"
 #include "connection_pool.H"
 
-#define BUG 0
+#define BUG 1
 
 using namespace CryptoPP;
 using namespace std;
@@ -159,7 +159,7 @@ tamed void process_query_obj_ver(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
-	if(BUG) warn << "Got QUERY_OBJ Request\n";
+	if(BUG>=2) warn << "Got QUERY_OBJ Request\n";
 
 	id.set_from_rpc(parg);
 	it = key_meta_list.find(id);
@@ -289,7 +289,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
-	if(BUG) warn << "Got TAIL_READ_EX Request\n";
+	if(BUG>=2) warn << "Got TAIL_READ_EX Request\n";
 
 	id.set_from_rpc(parg);
 
@@ -305,14 +305,14 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		}
 		
 		if(it->second.committed == it->second.max_pending) {
-			if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
+			if(BUG>=2) warn << "Clean READ " << id.toString().c_str() << "\n";
 			repl = storage->get(id);
 			to_rep.data = *repl;
 			to_rep.dirty = false;
 			sbp->replyref(to_rep);
 			return;
 		} else {
-			if(BUG) warn << "Dirty READ " << id.toString().c_str() << "\n";
+			if(BUG>=2) warn << "Dirty READ " << id.toString().c_str() << "\n";
 	
 			//Find tail
 			rit = ring_succ(id);
@@ -344,7 +344,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 				//Got an ACK between call
 				if(it->second.committed == it->second.max_pending) {
-					if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
+					if(BUG>=2) warn << "Clean READ " << id.toString().c_str() << "\n";
 					repl = storage->get(id);
 					to_rep.data = *repl;
 					to_rep.dirty = true;
@@ -448,6 +448,7 @@ tamed void process_propagate(svccb * sbp) {
 
 	parg = *(sbp->getarg<propagate_arg>());
 	if(BUG) warn << "Got PROPAGATE Request\n";
+	if(BUG) warn << "Received Propagate key of size " << parg.data.size() << "\n";
 
 	id.set_from_rpc(parg.id);
 
@@ -457,6 +458,7 @@ tamed void process_propagate(svccb * sbp) {
 	if(kit != key_meta_list.end() && 
 		((kit->second.max_pending >= parg.ver && parg.committed == false) ||
 		 (kit->second.committed >= parg.ver && parg.committed == true))) {
+		 	if(BUG) warn << "Already higher\n";
 			sbp->replyref(true);
 			return;
 	}
@@ -495,6 +497,7 @@ tamed void process_propagate(svccb * sbp) {
 		wrt.committed = parg.ver;
 		if(wrt.max_pending < wrt.committed)
 			wrt.max_pending = wrt.committed;
+		wrt.pending_list[wrt.max_pending] = parg.data;
 	} else {
 		wrt.max_pending = parg.ver;
 		wrt.pending_list[parg.ver] = parg.data;
@@ -717,6 +720,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 			continue;
 		}
 
+		if(BUG) warn << "Propagating key of size " << arg.data.size() << "\n";
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
 			report_bad_node(succ->second);
@@ -1424,7 +1428,7 @@ tamed static void random_no_op {
 			fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
 		}
 	
-		if(BUG) warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
+		if(BUG>=2) warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
 	
 		twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	

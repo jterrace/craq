@@ -7,8 +7,15 @@ SFS_LIB_DIR=/usr/local/lib/sfslite
 LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++
 OBJS=craq_rpc.o ID_Value.o Node.o MemStorage.o connection_pool.o
 
-all: manager chain_node test
-test: manager_test single_write_read multi_read_write writer reader
+all: manager \
+	chain_node \
+	manager_test \
+	single_write_read \
+	multi_read_write \
+	writer \
+	reader \
+	single_reader
+
 
 craq_rpc.o: craq_rpc.x
 	$(RPCC) -h -o craq_rpc.h craq_rpc.x
@@ -63,6 +70,11 @@ reader: test/reader.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/reader.o -c test/reader.C
 	$(CC) $(CFLAGS) -o test/reader test/reader.o $(OBJS) $(LIBS)
 	
+single_reader: test/single_reader.T $(OBJS)
+	$(TAME) -o test/single_reader.C test/single_reader.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_reader.o -c test/single_reader.C
+	$(CC) $(CFLAGS) -o test/single_reader test/single_reader.o $(OBJS) $(LIBS)
+	
 clean:
 	rm -f chain_node chain_node.C\
 		manager manager.C \
@@ -73,4 +85,5 @@ clean:
 		test/multi_read_write.C test/multi_read_write \
 		test/writer.C test/writer \
 		test/reader.C test/reader \
+		test/single_reader.C test/single_reader \
 		*.o test/*.o
