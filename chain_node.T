@@ -274,7 +274,7 @@ tamed void process_tail_read(svccb * sbp) {
 
 tamed void process_tail_read_ex(svccb * sbp) {
 	tvars {
-		rpc_hash parg;
+		tail_read_ex_arg parg;
 		const blob * repl;
 		ID_Value id;
 		key_iter it;
@@ -288,10 +288,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		tail_read_ex_ret to_rep;
 	}
 
-	parg = *(sbp->getarg<rpc_hash>());
+	parg = *(sbp->getarg<tail_read_ex_arg>());
 	if(BUG>=2) warn << "Got TAIL_READ_EX Request\n";
 
-	id.set_from_rpc(parg);
+	id.set_from_rpc(parg.id);
 
 	it = key_meta_list.find(id);
 	
@@ -304,7 +304,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			return;
 		}
 		
-		if(it->second.committed == it->second.max_pending) {
+		if(!parg.dirty && it->second.committed == it->second.max_pending) {
 			if(BUG>=2) warn << "Clean READ " << id.toString().c_str() << "\n";
 			repl = storage->get(id);
 			to_rep.data = *repl;

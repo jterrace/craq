@@ -51,9 +51,9 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 		ptr<aclnt> cli; 
 		clnt_stat e;
 		rpc_node node;
-		rpc_hash arg_hash;
 		u_int put_ret;
 		tail_read_ex_ret ret;
+		tail_read_ex_arg ex_arg;
 		map<ID_Value, Node>::iterator it;
 	}
 	
@@ -70,8 +70,9 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 			(*cb)(false);
 			return;
 		}
-		arg_hash = to_send->id.get_rpc_id();
-		twait {	cli->call(TAIL_READ_EX, &arg_hash, &ret,  mkevent(e)); }
+		ex_arg.id = to_send->id.get_rpc_id();
+		ex_arg.dirty = true;
+		twait {	cli->call(TAIL_READ_EX, &ex_arg, &ret,  mkevent(e)); }
 		if(e) {
 			invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
 			(*cb)(false);
@@ -90,8 +91,9 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 			(*cb)(false);
 			return;
 		}
-		arg_hash = to_send->id.get_rpc_id();
-		twait {	cli->call(TAIL_READ_EX, &arg_hash, &ret,  mkevent(e)); }
+		ex_arg.id = to_send->id.get_rpc_id();
+		ex_arg.dirty = false;
+		twait {	cli->call(TAIL_READ_EX, &ex_arg, &ret,  mkevent(e)); }
 		if(e || ret.data.size() != to_send->msg.size()) {
 			(*cb)(false);
 			return;

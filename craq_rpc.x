@@ -69,6 +69,11 @@ program RPC_MANAGER {
  	int pend;
  };
  
+ struct tail_read_ex_arg {
+ 	rpc_hash id;
+ 	bool dirty;
+ };
+ 
  struct tail_read_ex_ret {
  	blob data;
  	bool dirty;
@@ -79,7 +84,7 @@ program RPC_MANAGER {
  		//External functions
  		blob TAIL_READ(rpc_hash) = 0;
  		bool HEAD_WRITE(head_write_arg) = 1;
-  		tail_read_ex_ret TAIL_READ_EX(rpc_hash) = 8;
+  		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;
