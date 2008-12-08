@@ -21,6 +21,7 @@ unsigned int WINDOW_SIZE;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
 bool CRAQ;
+bool DO_DIRTY;
 
 struct key_value {
 	ID_Value id;
@@ -71,7 +72,7 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 			return;
 		}
 		ex_arg.id = to_send->id.get_rpc_id();
-		ex_arg.dirty = true;
+		ex_arg.dirty = DO_DIRTY;
 		twait {	cli->call(TAIL_READ_EX, &ex_arg, &ret,  mkevent(e)); }
 		if(e) {
 			invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
@@ -82,7 +83,7 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 			(*cb)(false);
 			return;
 		}
-		this_one->dirty = ret.dirty;	
+		this_one->dirty = ret.dirty;
 		(*cb)(true);
 		return;
 	} else {
@@ -255,6 +256,7 @@ connect_to_manager(str h, int port) {
 		} else {
 			// Harvest
 			twait(rv, k, res);
+			gettimeofday(&cur_time, NULL);
 			req_start = (time_and_type *)k;
 			if(*res) {
 				nrecv++;
@@ -310,30 +312,40 @@ void main2(int argc, char **argv) {
 		str manager_hostname;
 		int manager_port;
 		str craq;
+		str do_dirty;
 		int i;
 	}
 	
 	if(argc > 7) {
 		craq = argv[7];
 	}
+	if(argc > 8) {
+		do_dirty = argv[8];
+	}
 	
-	if (argc == 8 && convertint(argv[2], &manager_port) &&
+	if (argc == 9 && convertint(argv[2], &manager_port) &&
 		convertint(argv[3], &NUM_SECS) &&
 		convertint(argv[4], &WINDOW_SIZE) &&
 		convertint(argv[5], &MESSAGE_SIZE) &&
 		convertint(argv[6], &NUM_MESSAGES) &&
-		(craq=="CRAQ" || craq=="CR") ) {
+		(craq=="CRAQ" || craq=="CR") &&
+		(do_dirty=="Y" || do_dirty=="N") ) {
 	 	manager_hostname = argv[1];
 	 	if(craq == "CRAQ") {
 	 		CRAQ = true;
 	 	} else {
 	 		CRAQ = false;
 	 	}
+	 	if(do_dirty == "Y") {
+	 		DO_DIRTY = true;
+	 	} else {
+	 		DO_DIRTY = false;
+	 	}
 		connect_to_manager(manager_hostname, manager_port);
 	}
 	else {
 		fatal << "usage: reader <manager_hostname> <manager_port> <num_secs>\n"
-			  << "             <window_size> <message_size> <num_messages> <craq_bool>\n";
+			  << "             <window_size> <message_size> <num_messages> <craq_bool> <craq_dirty>\n";
 		exit(1);
 	}
 }
