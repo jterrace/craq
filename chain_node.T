@@ -5,6 +5,7 @@
 #include <deque>
 #include <sstream>
 #include <ctime>
+#include "zookeeper.h"
 #include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
@@ -19,6 +20,7 @@
 #include "connection_pool.H"
 
 #define BUG 1
+
 
 using namespace CryptoPP;
 using namespace std;

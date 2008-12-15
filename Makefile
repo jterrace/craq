@@ -2,9 +2,9 @@ TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
 CC=g++-4.2
 CFLAGS= -g -O1 -static -Wall -Werror -Wno-unused -Wno-sign-compare
-INCLUDE= -I/usr/local/include/sfslite -I/usr/include/crypto++
+INCLUDE= -I/usr/local/include/sfslite -I/usr/include/crypto++ -I/usr/local/include/c-client-src
 SFS_LIB_DIR=/usr/local/lib/sfslite
-LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++
+LIBS= $(SFS_LIB_DIR)/libtame.a $(SFS_LIB_DIR)/libsfscrypt.a $(SFS_LIB_DIR)/libarpc.a $(SFS_LIB_DIR)/libasync.a -lresolv -lpth -lpthread -ldl -lcrypto++ -lzookeeper_st
 OBJS=craq_rpc.o ID_Value.o Node.o MemStorage.o connection_pool.o
 
 all: manager \
