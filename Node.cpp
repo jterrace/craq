@@ -25,6 +25,15 @@ void Node::set_from_rpc_node(rpc_node newnode) {
 	port = newnode.port;
 }
 
+void Node::set_from_string(string s) {
+	istringstream iss(s, istringstream::in);
+	iss >> ip;
+	iss >> port;
+	string id_str;
+	iss >> id_str;
+	id.fromString(id_str);
+}
+
 const string Node::toString() const {
 	ostringstream ss;
 	ss << "(" << ip

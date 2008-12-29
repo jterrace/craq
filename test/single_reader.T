@@ -59,7 +59,7 @@ tamed static void read_it(cbb cb) {
 	tvars {
 		int fd, fd2, i, rnd;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		rpc_node node;
 		rpc_hash arg_hash;
@@ -68,7 +68,7 @@ tamed static void read_it(cbb cb) {
 		map<ID_Value, Node>::iterator it;
 		Node getting;
 	}
-	
+
 	it = glob_it;
 	rnd = rand() % CHAIN_SIZE;
 	for(i=0; i<rnd; i++) {
@@ -76,7 +76,7 @@ tamed static void read_it(cbb cb) {
 		if(it == ring.end()) it = ring.begin();
 	}
 	getting = it->second;
-	
+
 	//warn << getting.getPort() << "\n";
 	twait { get_rpc_cli (getting.getIp().c_str(),getting.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
@@ -95,8 +95,8 @@ tamed static void read_it(cbb cb) {
 		return;
 	}
 	(*cb)(true);
-	return;		
-	
+	return;
+
 }
 
 ID_Value get_sha1(string msg)
@@ -119,7 +119,7 @@ ID_Value get_sha1(blob msg)
  	return ret;
 }
 
-tamed static void 
+tamed static void
 connect_to_manager(str h, int port) {
 	tvars {
 		int fd;
@@ -160,35 +160,35 @@ connect_to_manager(str h, int port) {
 		fatal << "Couldn't connect to manager.\n";
 	}
 	//warn << " DONE\n";
-	
+
 	delaycb(0, 250 * 1000000, wrap(get_updates_stub));
-	
+
 	x = axprt_stream::alloc(fd);
 	cli = aclnt::alloc(x, rpc_manager_1);
-	
+
 	//warn << "Getting node list...\n";
 	twait { cli->call(GET_NODE_LIST, NULL, &cur_list, mkevent(e)); }
 	if(e || cur_list.nodes.size() < CHAIN_SIZE) {
 		fatal << "Invalid node list!\n";
 	}
 	//warn << " DONE\n";
-	
+
 	node_list_version = cur_list.ver;
 	for(i=0; i<cur_list.nodes.size(); i++) {
 		ret.set_from_rpc_node(cur_list.nodes[i]);
 		ring[ret.getId()] = ret;
 	}
-	
+
 	//warn << "Generating " << NUM_MESSAGES << " messages of size "
 	//	 << MESSAGE_SIZE << "...\n";
 	msg_blob.setsize(500);
 	glob_msg.append(500, 'A');
 	glob_id = get_sha1(glob_msg);
-	
+
 	for(i=0; i<500; i++) {
 		msg_blob[i] = glob_msg[i];
 	}
-	
+
 	it = ring.lower_bound(glob_id);
 	if(it == ring.end()) it = ring.begin();
 	glob_it = it;
@@ -203,7 +203,7 @@ connect_to_manager(str h, int port) {
 	if(e || !wrt_ret) {
 		fatal << "Error writing key to node\n";
 	}
-	
+
 	num_data = 0;
 	sum_data = 0.0;
 	i = 0;
@@ -211,13 +211,13 @@ connect_to_manager(str h, int port) {
 	nsent = 0;
 	nrecv = 0;
 	window_sz = WINDOW_SIZE;
-	
+
 	gettimeofday(&cur_time, NULL);
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
-	
+
 	start_time = cur_time;
 	last_time = start_time;
-	
+
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
 		gettimeofday(&cur_time, NULL);
@@ -227,7 +227,7 @@ connect_to_manager(str h, int port) {
 			//warn << "Reading key " << i << "\n";
 			req_start = new time_and_type;
 			gettimeofday(&(req_start->t), NULL);
-			read_it(mkevent(rv, (u_int)req_start, res, *res));
+			//read_it(mkevent(rv, (u_int)req_start, res, *res));
 			i++;
 			nsent++;
 		} else {
@@ -252,11 +252,11 @@ connect_to_manager(str h, int port) {
 			} else {
 				//warn << "================failed===============\n";
 				res = New refcounted<bool> ();
-				read_it(mkevent(rv, (u_int)req_start, res, *res));				
+				//read_it(mkevent(rv, (u_int)req_start, res, *res));
 			}
 		}
 	}
-	
+
 	exit(0);
 
 }
@@ -290,7 +290,7 @@ tamed static void get_updates() {
 		if(e || cur_list.nodes.size() < CHAIN_SIZE) {
 			fatal << "Invalid node list!\n";
 		}
-		
+
 		ring.clear();
 		for(i=0; i<cur_list.nodes.size(); i++) {
 			ret.set_from_rpc_node(cur_list.nodes[i]);
@@ -300,12 +300,12 @@ tamed static void get_updates() {
 		if(ring.size() < CHAIN_SIZE) {
 			fatal << "Chain size too small! exiting!\n";
 		}
-		
+
 		glob_it = ring.lower_bound(glob_id);
 		if(glob_it == ring.end()) glob_it = ring.begin();
-		
+
 	}
-	
+
 }
 
 void get_updates_stub() {
@@ -323,7 +323,7 @@ void main2(int argc, char **argv) {
 		connect_to_manager(manager_hostname, manager_port);
 	}
 	else {
-		fatal << "usage: single_reader <manager_hostname> <manager_port> <num_secs> <window_size>\n";
+		fatal << "usage: BROKEN <manager_hostname> <manager_port> <num_secs> <window_size>\n";
 		exit(1);
 	}
 }

@@ -13,12 +13,14 @@ private:
 	bool null;
 	byte id[20];
 	rpc_hash test;
+	static int hex_to_int(char x);
 public:
 	ID_Value();
 	ID_Value(byte newid[20]);
 	ID_Value(rpc_hash newid);
 	virtual ~ID_Value();
 	string toString() const;
+	void fromString(const string s);
 	bool isNull();
 	void setNull();
 	void randomize();

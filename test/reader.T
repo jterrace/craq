@@ -49,7 +49,7 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 	tvars {
 		int fd, fd2, i, rnd;
 		ptr<axprt_stream> x;
-		ptr<aclnt> cli; 
+		ptr<aclnt> cli;
 		clnt_stat e;
 		rpc_node node;
 		u_int put_ret;
@@ -57,7 +57,7 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 		tail_read_ex_arg ex_arg;
 		map<ID_Value, Node>::iterator it;
 	}
-	
+
 	if(CRAQ) {
 		it = to_send->head_it;
 		rnd = rand() % CHAIN_SIZE;
@@ -65,7 +65,7 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 			it++;
 			if(it == ring.end()) it = ring.begin();
 		}
-		
+
 		twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 		if(fd < 0) {
 			(*cb)(false);
@@ -103,8 +103,8 @@ tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb)
 		(*cb)(true);
 		return;
 	}
-		
-	
+
+
 }
 
 ID_Value get_sha1(string msg)
@@ -127,7 +127,7 @@ ID_Value get_sha1(blob msg)
  	return ret;
 }
 
-tamed static void 
+tamed static void
 connect_to_manager(str h, int port) {
 	tvars {
 		int fd;
@@ -147,7 +147,7 @@ connect_to_manager(str h, int port) {
 		bool wrt_ret;
 		blob rd_ret;
 		bool eqs;
-		deque<key_value> keys; 
+		deque<key_value> keys;
 		timeval cur_time, start_time, last_time;
 		rendezvous_t<u_int, ptr<bool> > rv;
 		ptr<bool> res;
@@ -167,22 +167,22 @@ connect_to_manager(str h, int port) {
 		fatal << "Couldn't connect to manager.\n";
 	}
 	//warn << " DONE\n";
-	
+
 	x = axprt_stream::alloc(fd);
 	cli = aclnt::alloc(x, rpc_manager_1);
-	
+
 	//warn << "Getting node list...\n";
 	twait { cli->call(GET_NODE_LIST, NULL, &cur_list, mkevent(e)); }
 	if(e || cur_list.nodes.size() < CHAIN_SIZE) {
 		fatal << "Invalid node list!\n";
 	}
 	//warn << " DONE\n";
-	
+
 	for(i=0; i<cur_list.nodes.size(); i++) {
 		ret.set_from_rpc_node(cur_list.nodes[i]);
 		ring[ret.getId()] = ret;
 	}
-	
+
 	//warn << "Generating " << NUM_MESSAGES << " messages of size "
 	//	 << MESSAGE_SIZE << "...\n";
 	srand(9);
@@ -204,7 +204,7 @@ connect_to_manager(str h, int port) {
 		keys[i].tail = it->second;
 	}
 	//warn << " DONE\n";
-	
+
 	//warn << "Writing initial messages...\n";
 	for(i=0; i<NUM_MESSAGES; i++) {
 		twait { get_rpc_cli (keys[i].head.getIp().c_str(),keys[i].head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
@@ -219,7 +219,7 @@ connect_to_manager(str h, int port) {
 		}
 	}
 	//warn << " DONE\n";
-	
+
 	//gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
@@ -231,10 +231,10 @@ connect_to_manager(str h, int port) {
 	nsent = 0;
 	nrecv = 0;
 	window_sz = WINDOW_SIZE;
-	
+
 	gettimeofday(&cur_time, NULL);
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
-	
+
 	srand(time(NULL));
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
@@ -247,7 +247,7 @@ connect_to_manager(str h, int port) {
 			req_start = new time_and_type;
 			gettimeofday(&(req_start->t), NULL);
 			req_start->key = i;
-			read_it(&keys[i], req_start, mkevent(rv, (u_int)req_start, res, *res));
+			//read_it(&keys[i], req_start, mkevent(rv, (u_int)req_start, res, *res));
 			nsent++;
 			i++;
 			if(i > NUM_MESSAGES-1) {
@@ -273,15 +273,15 @@ connect_to_manager(str h, int port) {
 					usec_diff = usec_diff % 1000000;
 				}
 				warn << sec_diff << "\t" << usec_diff << "\n";
-				
+
 				delete req_start;
 
 			} else {
-				
+
 				//retry
 				//warn << "retrying\n";
 				res = New refcounted<bool> ();
-				read_it(&keys[req_start->key], req_start, mkevent(rv, (u_int)req_start, res, *res));				
+				//read_it(&keys[req_start->key], req_start, mkevent(rv, (unsigned long)req_start, res, *res));
 			}
 		}
 		/*gettimeofday(&cur_time, NULL);
@@ -301,7 +301,7 @@ connect_to_manager(str h, int port) {
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
 	//warn << "Average: " << ss.str().c_str() << " replies/second\n";
-	
+
 	exit(0);
 
 }
@@ -315,14 +315,14 @@ void main2(int argc, char **argv) {
 		str do_dirty;
 		int i;
 	}
-	
+
 	if(argc > 7) {
 		craq = argv[7];
 	}
 	if(argc > 8) {
 		do_dirty = argv[8];
 	}
-	
+
 	if (argc == 9 && convertint(argv[2], &manager_port) &&
 		convertint(argv[3], &NUM_SECS) &&
 		convertint(argv[4], &WINDOW_SIZE) &&
@@ -344,7 +344,7 @@ void main2(int argc, char **argv) {
 		connect_to_manager(manager_hostname, manager_port);
 	}
 	else {
-		fatal << "usage: reader <manager_hostname> <manager_port> <num_secs>\n"
+		fatal << "usage: BROKEN <manager_hostname> <manager_port> <num_secs>\n"
 			  << "             <window_size> <message_size> <num_messages> <craq_bool> <craq_dirty>\n";
 		exit(1);
 	}
