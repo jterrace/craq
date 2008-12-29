@@ -93,6 +93,7 @@ ring_iter my_node_ptr;
 ID_Value my_id;
 string my_zoo_id;
 int zoo_node_count = 0;
+map<string, Node> zoo_nodes;
 
 map<ID_Value, key_meta> key_meta_list;
 
@@ -1458,6 +1459,18 @@ void fdcb_write(int fd) {
 	do_zoo_interest();
 }
 
+void updated_node_value(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) {
+	if(rc != ZOK) {
+		fatal << "Received bad updated node info" << rc << ".\n";
+	}
+	string val(value, value_len);
+	Node new_node;
+	new_node.set_from_string(val);
+	zoo_nodes[(char *)data] = new_node;
+	free((void*)data);
+	node_added(new_node);
+}
+
 void updated_node_list(int rc, const struct String_vector *strings, const void *data) {
     if(rc!=ZOK || !strings || strings->count < 1) {
     	fatal << "Received bad children list.\n";
@@ -1468,6 +1481,43 @@ void updated_node_list(int rc, const struct String_vector *strings, const void *
     	fatal << "Updated node list while doing initial list. Not implemented.\n";
     }
 
+	set<string> new_list;
+	for (int i=0; i < strings->count; i++) {
+		string this_one = strings->data[i];
+		new_list.insert(this_one);
+	}
+	
+	map<string, Node>::iterator old_it = zoo_nodes.begin();
+	set<string>::iterator new_it = new_list.begin();
+	
+	set<string> to_add;
+	while(old_it != zoo_nodes.end() || new_it != new_list.end()) {
+		if(old_it == zoo_nodes.end()) {
+			to_add.insert(*new_it);
+			new_it++;
+		} else if( new_it == new_list.end() ) {
+			node_deleted(old_it->second);
+			zoo_nodes.erase(old_it++);
+		}
+		else if( old_it->first == *new_it ) {
+			old_it++;
+			new_it++;
+		} else if( old_it->first < *new_it ) {
+			node_deleted(old_it->second);
+			zoo_nodes.erase(old_it++);
+		} else if( old_it->first > *new_it ) {
+			to_add.insert(*new_it);
+			new_it++;
+		}
+	}
+	
+	for( set<string>::iterator it = to_add.begin(); it != to_add.end(); it++ ) {
+		string this_one = "/nodes/" + (*it);
+        int r = zoo_aget(zh, this_one.c_str(), 0, &updated_node_value, strdup(it->c_str()));
+        if (r) {
+            fatal << "Received error " << r << " when querying for updated node information.\n";
+        }
+	}	
 
 }
 
@@ -1478,6 +1528,8 @@ void initial_node_value(int rc, const char *value, int value_len, const struct S
 	string val(value, value_len);
 	Node new_node;
 	new_node.set_from_string(val);
+	zoo_nodes[(char *)data] = new_node;
+	free((void*)data);
 	ring[new_node.getId()] = new_node;
 	if( ring.size() == zoo_node_count ) {
 		warn << "Node List Initialization finished.\n";
@@ -1494,9 +1546,9 @@ void initial_node_list(int rc, const struct String_vector *strings, const void *
 	zoo_node_count = strings->count;
 	for (int i=0; i < strings->count; i++) {
 		warn << strings->data[i] << "\n";
-		string this_one = "/nodes/";
-		this_one += strings->data[i];
-        int r = zoo_aget(zh, this_one.c_str(), 0, &initial_node_value, 0);
+		string this_one = strings->data[i];
+		this_one = "/nodes/" + this_one;
+        int r = zoo_aget(zh, this_one.c_str(), 0, &initial_node_value, strdup(strings->data[i]));
         if (r) {
             fatal << "Received error " << r << " when querying initial node information.\n";
         }
