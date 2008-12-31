@@ -18,6 +18,7 @@
 #include "Storage.h"
 #include "connection_pool.H"
 #include "zookeeper.h"
+#include "zoo_craq.H"
 
 #define BUG 1
 
@@ -41,8 +42,6 @@ public:
   tame::server_t *alloc_server (int fd, int v) { return New rpc_server (fd, v); }
 };
 
-void get_updates_stub();
-void random_no_op_stub();
 Storage * storage = new MemStorage();
 
 struct key_meta {
@@ -57,7 +56,6 @@ struct key_meta {
 typedef map<ID_Value, Node>::iterator ring_iter;
 typedef map<ID_Value, key_meta>::iterator key_iter;
 
-static void process_poke_node_list_ver(svccb * sbp, CLOSURE);
 static void process_query_obj_ver(svccb * sbp, CLOSURE);
 static void process_tail_read(svccb * sbp, CLOSURE);
 static void process_tail_read_ex(svccb * sbp, CLOSURE);
@@ -68,8 +66,9 @@ static void process_back_propagate(svccb * sbp, CLOSURE);
 static void back_propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_ack(svccb * sbp, CLOSURE);
 static void ack(ID_Value id, cbb cb, CLOSURE);
-static void get_updates(CLOSURE);
 static void report_bad_node(Node n, CLOSURE);
+static void node_added(Node node_changed, CLOSURE);
+static void node_deleted(Node node_changed, CLOSURE);
 
 ring_iter ring_succ(ID_Value id);
 void ring_incr(ring_iter * it);
@@ -78,9 +77,6 @@ void ring_decr(ring_iter * it);
 ring_iter ring_succ(ID_Value id);
 void ring_incr(ring_iter * it);
 void ring_decr(ring_iter * it);
-
-void do_zoo_interest();
-void watcher(zhandle_t *zzh, int type, int state, const char *path, void* context);
 
 str manager_hostname;
 int manager_port;
@@ -89,19 +85,13 @@ unsigned int known_version;
 map<ID_Value, Node> ring;
 Node my_node;
 string my_node_str;
+bool ring_init = false;
 ring_iter my_node_ptr;
 ID_Value my_id;
-string my_zoo_id;
-int zoo_node_count = 0;
-map<string, Node> zoo_nodes;
 
 map<ID_Value, key_meta> key_meta_list;
 
 bool update_running = false;
-
-zhandle_t * zh;
-map<int, timecb_t *> read_timeouts;
-map<int, timecb_t *> write_timeouts;
 
 void delay(long ms) {
   timespec ts;
@@ -150,17 +140,6 @@ ID_Value get_sha1(string msg)
 	SHA().CalculateDigest(buffer, (byte *)msg.c_str(), msg.length());
 	ID_Value ret(buffer);
  	return ret;
-}
-
-tamed void process_poke_node_list_ver(svccb * sbp) {
-	unsigned parg = *(sbp->getarg<unsigned>());
-	if(BUG) warn << "Got POKE_NODE_LIST_VER Request\n";
-
-	if(parg > known_version) {
-		get_updates();
-	}
-
-	sbp->replyref(NULL);
 }
 
 tamed void process_query_obj_ver(svccb * sbp) {
@@ -858,10 +837,9 @@ tamed void ack(ID_Value id, cbb cb) {
 	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-		//TODO: DELETE THIS!
-		if(backoff > 10) {
+		/*if(backoff > 10) {
 			exit(1);
-		}
+		}*/
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
 			ret = false;
@@ -935,9 +913,6 @@ void rpc_server::dispatch(svccb * sbp) {
  		case ACK:
  			process_ack(sbp);
  			break;
- 		case POKE_NODE_LIST_VER:
- 			process_poke_node_list_ver(sbp);
- 			break;
  		case BACK_PROPAGATE:
  			process_back_propagate(sbp);
  			break;
@@ -973,14 +948,14 @@ void ring_decr(ring_iter * it) {
 }
 
 tamed void report_bad_node(Node n) {
-	tvars {
+	/*tvars {
 		int fd;
 		ptr<aclnt> cli;
 		clnt_stat e;
 		rpc_node arg;
-	}
+	}*/
 
-	if(BUG) warn << "Reporting bad node " << n.toString().c_str() << "\n";
+	/*if(BUG) warn << "Reporting bad node " << n.toString().c_str() << "\n";
 	invalidate_rpc_host(n.getIp().c_str(), n.getPort());
 
 	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
@@ -995,81 +970,8 @@ tamed void report_bad_node(Node n) {
 		}
 	}
 
-	twait { get_updates(); }
+	twait { get_updates(); }*/
 
-}
-
-tamed static void poke_neighbor(Node n, cbb cb) {
-	tvars {
-		int fd;
-		ptr<aclnt> cli;
-		clnt_stat e;
-		bool ret;
-	}
-
-	if(BUG) warn << "Poking neighbor " << n.toString().c_str() << "\n";
-	twait { get_rpc_cli (n.getIp().c_str(), n.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-	if( fd<0 ) {
-		report_bad_node(n);
-		ret = false;
-		(*cb)(ret);
-	} else {
-		twait {	cli->call(POKE_NODE_LIST_VER, &known_version, NULL,  mkevent(e)); }
-		if(e) {
-			report_bad_node(n);
-			ret = false;
-			(*cb)(ret);
-		} else {
-			ret = true;
-			(*cb)(ret);
-		}
-	}
-}
-
-tamed static void poke_neighbors() {
-	tvars {
-		ring_iter it;
-		set<Node> to_poke;
-		set<Node>::iterator t;
-		deque<Node> final_list;
-		u_int i;
-		ptr<bool> res;
-		rendezvous_t<u_int, ptr<bool> > rv;
-		u_int nrecv;
-	}
-
-	it = my_node_ptr;
-	if(ring.size()==1)
-		return;
-
-	for(i=0; i<CHAIN_SIZE-1; i++)
-		ring_decr(&it);
-
-	for(i=0; i<2*CHAIN_SIZE-2; i++, ring_incr(&it)) {
-		if(it == my_node_ptr) {
-			i--;
-			continue;
-		}
-		to_poke.insert(it->second);
-	}
-
-	final_list.resize(to_poke.size());
-
-	for(t=to_poke.begin(), i=0; t!=to_poke.end(); t++, i++) {
-		final_list[i] = *t;
-		res = New refcounted<bool> ();
-		poke_neighbor(*t, mkevent(rv, i, res, *res));
-	}
-
-	nrecv = 0;
-	while(nrecv < to_poke.size()) {
-		twait(rv, i, res);
-		nrecv++;
-		if(! (*res)) {
-			report_bad_node(final_list[i]);
-		}
-	}
 }
 
 tamed static void start_rpc_srv(int listen_port) {
@@ -1084,7 +986,7 @@ tamed static void start_rpc_srv(int listen_port) {
 	exit(ret);
 }
 
-tamed static void node_added(Node node_changed) {
+tamed void node_added(Node node_changed) {
 	tvars {
 		ring_iter succ;
 		ring_iter pred;
@@ -1197,7 +1099,7 @@ tamed static void node_added(Node node_changed) {
 
 }
 
-tamed static void node_deleted(Node node_changed) {
+tamed void node_deleted(Node node_changed) {
 
 	tvars {
 		ring_iter succ;
@@ -1302,195 +1204,42 @@ tamed static void node_deleted(Node node_changed) {
 
 }
 
-tamed void get_updates() {
+tamed static void
+node_list_watcher(string path) {
 
 	tvars {
-		int fd;
-		ptr<aclnt> cli;
-		clnt_stat e;
-		u_int newest_ver;
-		rpc_memb_delta delt;
-		ID_Value id_changed;
-		Node node_changed;
+		vector<string> * ret_node_list;
+		set<string> new_list;
+		int i, j;
+		map<string, Node>::iterator old_it;
+		set<string>::iterator new_it;
+		set<string> to_add;
+		set<string>::iterator it;
+		vector<string *> add_rets;
+		vector<string> add_ids;
+		rendezvous_t<int> rv;
+		string search;
+		string * new_val;
+		Node new_node;
 	}
 
-	if(update_running) return;
-	update_running = true;
-
-	twait { get_rpc_cli (manager_hostname, manager_port, &cli, &rpc_manager_1, mkevent(fd)); }
-	if( fd<0 ) {
-		fatal << "Connection to manager failed (host:" << manager_hostname << ",port:" << manager_port << "\n";
-	}
-
-	twait {	cli->call(GET_NODE_LIST_VERSION, NULL, &newest_ver, mkevent(e)); }
-	if(e) {
-		fatal << "Retrieving the node list from the manager failed.\n";
-	}
-
-	if(newest_ver <= known_version) {
-		update_running = false;
-		return;
-	}
-
-	twait { cli->call(GET_NODE_LIST_DELTA, &known_version, &delt, mkevent(e)); }
-	if(e) {
-		fatal << "Retrieving the delta of the node list from the manager failed.\n";
-	}
-
-	if(delt.changes.size() == 0) {
-		//TODO: Do diff with full version
-		fatal << "Too lazy to implement this right now! Dying! (yay research)\n";
-	} else {
-		for(int i=0; i<delt.changes.size(); i++) {
-			if(delt.changes[i].ver > newest_ver)
-				newest_ver = delt.changes[i].ver;
-			node_changed.set_from_rpc_node(delt.changes[i].node);
-			if(delt.changes[i].event == EVENT_ADD) {
-				node_added(node_changed);
-			} else {
-				node_deleted(node_changed);
-			}
-		}
-	}
-
-	known_version = newest_ver;
-	if(BUG) warn << "Updated to newest node list version: " << known_version << "\n";
-	update_running = false;
-
-}
-
-void get_updates_stub() {
-	twait { get_updates(); }
-	delaycb(1, 0, wrap(get_updates_stub));
-}
-
-tamed static void random_no_op {
-	tvars {
-		u_int r, i;
-		ring_iter k;
-		int fd;
-		ptr<aclnt> cli;
-		clnt_stat e;
-		bool ret;
-	}
-
-	srand ( time(NULL) );
-
-	while(1) {
-
-		r = rand() % ring.size();
-		for(k = ring.begin(), i=0; k != ring.end(), i<r; k++, i++);
-		if(k == ring.end()) {
-			fatal << "Somehow got to the end of the list when randomly running a NOOP. Shouldn't happen. Dying!\n";
-		}
-
-		if(BUG>=2) warn << "Calling a random NOOP on " << k->second.toString().c_str() << "\n";
-
-		twait { get_rpc_cli (k->second.getIp().c_str(), k->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-		if( fd<0 ) {
-			report_bad_node(k->second);
-		} else {
-			twait {	cli->call(NO_OP, NULL, &ret,  mkevent(e)); }
-			if(e || !ret) {
-				report_bad_node(k->second);
-			}
-		}
-
-		twait { delaycb (0, 250 * 1000000, mkevent()); }
-
-	}
-
-}
-
-void random_no_op_stub() {
-	random_no_op();
-}
-
-void fdcb_read_timeout(int fd) {
-	warn << "read timeout " << fd << "\n";
-	map<int, timecb_t *>::iterator it = read_timeouts.find(fd);
-	if( it != read_timeouts.end() ) {
-		read_timeouts.erase(it);
-	}
-	//fdcb(fd, selread, 0);
-	int events = 0;
-	//events |= ZOOKEEPER_READ;
-	zookeeper_process(zh, events);
-	do_zoo_interest();
-}
-
-void fdcb_read(int fd) {
-	warn << "got read for fd: " << fd << "\n";
-	map<int, timecb_t *>::iterator it = read_timeouts.find(fd);
-	if( it != read_timeouts.end() ) {
-		timecb_remove(it->second);
-		read_timeouts.erase(it);
-	}
-	int events = 0;
-	events |= ZOOKEEPER_READ;
-	zookeeper_process(zh, events);
-	do_zoo_interest();
-}
-
-void fdcb_write_timeout(int fd) {
-	warn << "write timeout " << fd << "\n";
-	map<int, timecb_t *>::iterator it = write_timeouts.find(fd);
-	if( it != write_timeouts.end() ) {
-		write_timeouts.erase(it);
-	}
-	//fdcb(fd, selwrite, 0);
-	int events = 0;
-	//events |= ZOOKEEPER_WRITE;
-	zookeeper_process(zh, events);
-	do_zoo_interest();
-}
-
-void fdcb_write(int fd) {
-	warn << "got write for fd: " << fd << "\n";
-	map<int, timecb_t *>::iterator it = write_timeouts.find(fd);
-	if( it != write_timeouts.end() ) {
-		timecb_remove(it->second);
-		write_timeouts.erase(it);
-	}
-	int events = 0;
-	events |= ZOOKEEPER_WRITE;
-	zookeeper_process(zh, events);
-	do_zoo_interest();
-}
-
-void updated_node_value(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) {
-	if(rc != ZOK) {
-		fatal << "Received bad updated node info" << rc << ".\n";
-	}
-	string val(value, value_len);
-	Node new_node;
-	new_node.set_from_string(val);
-	zoo_nodes[(char *)data] = new_node;
-	free((void*)data);
-	node_added(new_node);
-}
-
-void updated_node_list(int rc, const struct String_vector *strings, const void *data) {
-    if(rc!=ZOK || !strings || strings->count < 1) {
-    	fatal << "Received bad children list.\n";
-    }
-
-    if(zoo_node_count != 0) {
+    if(!ring_init) {
     	//TODO: Fix this
     	fatal << "Updated node list while doing initial list. Not implemented.\n";
     }
 
-	set<string> new_list;
-	for (int i=0; i < strings->count; i++) {
-		string this_one = strings->data[i];
-		new_list.insert(this_one);
+	twait { czoo_get_children("/nodes", &node_list_watcher, mkevent(ret_node_list)); }
+	if(ret_node_list == NULL) {
+		fatal << "Error retrieving updated node list!\n";
 	}
-	
-	map<string, Node>::iterator old_it = zoo_nodes.begin();
-	set<string>::iterator new_it = new_list.begin();
-	
-	set<string> to_add;
+	for(i=0; i<ret_node_list->size(); i++) {
+		new_list.insert( (*ret_node_list)[i] );
+	}
+	delete ret_node_list;
+
+	old_it = zoo_nodes.begin();
+	new_it = new_list.begin();
+
 	while(old_it != zoo_nodes.end() || new_it != new_list.end()) {
 		if(old_it == zoo_nodes.end()) {
 			to_add.insert(*new_it);
@@ -1510,168 +1259,25 @@ void updated_node_list(int rc, const struct String_vector *strings, const void *
 			new_it++;
 		}
 	}
-	
-	for( set<string>::iterator it = to_add.begin(); it != to_add.end(); it++ ) {
-		string this_one = "/nodes/" + (*it);
-        int r = zoo_aget(zh, this_one.c_str(), 0, &updated_node_value, strdup(it->c_str()));
-        if (r) {
-            fatal << "Received error " << r << " when querying for updated node information.\n";
-        }
-	}	
 
-}
-
-void initial_node_value(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) {
-	if(rc != ZOK) {
-		fatal << "Received bad node info" << rc << ".\n";
+	add_ids.resize(to_add.size());
+	add_rets.resize(to_add.size());
+	for( i=0, it = to_add.begin(); it != to_add.end(); i++, it++ ) {
+		search = "/nodes/" + (*it);
+		add_ids[i] = *it;
+        czoo_get(search, mkevent(rv, i, add_rets[i]));
 	}
-	string val(value, value_len);
-	Node new_node;
-	new_node.set_from_string(val);
-	zoo_nodes[(char *)data] = new_node;
-	free((void*)data);
-	ring[new_node.getId()] = new_node;
-	if( ring.size() == zoo_node_count ) {
-		warn << "Node List Initialization finished.\n";
-		zoo_node_count = 0;
-		update_my_ptr();
-	}
-}
-
-void initial_node_list(int rc, const struct String_vector *strings, const void *data) {
-    if(rc!=ZOK || !strings || strings->count < 1) {
-    	fatal << "Received bad children list.\n";
-    }
-
-	zoo_node_count = strings->count;
-	for (int i=0; i < strings->count; i++) {
-		warn << strings->data[i] << "\n";
-		string this_one = strings->data[i];
-		this_one = "/nodes/" + this_one;
-        int r = zoo_aget(zh, this_one.c_str(), 0, &initial_node_value, strdup(strings->data[i]));
-        if (r) {
-            fatal << "Received error " << r << " when querying initial node information.\n";
-        }
-	}
-}
-
-void created_my_node(int rc, const char *name, const void *data) {
-    if ( !(rc==ZOK) ) {
-        fatal << "Creating my ZooKeeper node failed! (" << rc << ")\n";
-    }
-    warn << "Received ZooKeeper ID: " << name << "\n";
-    my_zoo_id = name;
-    int r = zoo_aget_children(zh, "/nodes", 1, &initial_node_list, 0);
-    if(r) {
-    	fatal << "Received error " << r << " when getting initial node list.\n";
-    }
-}
-
-void created_root(int rc, const char *name, const void *data) {
-    if ( !(rc==ZOK || rc==ZNODEEXISTS) ) {
-        fatal << "Creating/verifying root ZooKeeper node failed! (" << rc << ")\n";
-    }
-    int r = zoo_acreate(zh, "/nodes/", my_node_str.c_str(), my_node_str.length(),
-    		&ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL | ZOO_SEQUENCE,
-    		&created_my_node, 0);
-    if(r) {
-    	fatal << "Received error " << r << " when creating my node.\n";
-    }
-}
-
-void watcher(zhandle_t *zzh, int type, int state, const char *path,void* context) {
-    if (type == ZOO_SESSION_EVENT) {
-        if (state == ZOO_CONNECTED_STATE) {
-        	warn << "Connected to ZooKeeper.\n";
-            int rc = zoo_acreate(zh, "/nodes", "", 0,
-            		&ZOO_OPEN_ACL_UNSAFE, 0,
-            		&created_root, 0);
-            if(rc) {
-            	fatal << "Received error " << rc << " when creating root node.\n";
-            }
-        } else if (state == ZOO_AUTH_FAILED_STATE) {
-            fatal << "ZooKeeper Authentication failed.\n";
-        } else if (state == ZOO_EXPIRED_SESSION_STATE) {
-            fatal << "ZooKeeper session expired.\n";
-        } else if (state == ZOO_CONNECTING_STATE ) {
-        	warn << "Connecting to ZooKeeper...\n";
-        } else if (state == ZOO_ASSOCIATING_STATE) {
-			warn << "Associating ZooKeeper connection...\n";
-        }
-    } else if( type == ZOO_CREATED_EVENT ) {
-
-    } else if( type == ZOO_DELETED_EVENT ) {
-
-    } else if( type == ZOO_CHANGED_EVENT ) {
-
-    } else if( type == ZOO_CHILD_EVENT ) {
-    	warn << "Got child event on " << path << "\n";
-        int r = zoo_aget_children(zh, "/nodes", 1, &updated_node_list, 0);
-        if(r) {
-        	fatal << "Received error " << r << " when getting updated node list.\n";
-        }
-    } else if( type == ZOO_NOTWATCHING_EVENT ) {
-
-    }
-}
-
-void do_zoo_interest() {
-	int fd;
-	int interest;
-	timeval tv;
-	int ret = zookeeper_interest(zh, &fd, &interest, &tv);
-	if(ret != ZOK) {
-		fatal << "Bad return from interest!\n";
-	}
-	if (fd != -1) {
-		if (interest & ZOOKEEPER_READ) {
-			//warn << "interest read fd: " << fd << "\n";
-			timecb_t * timeout = delaycb(tv.tv_sec, tv.tv_usec * 1000, wrap(fdcb_read_timeout, fd));
-			map<int, timecb_t *>::iterator it = read_timeouts.find(fd);
-			if( it != read_timeouts.end() ) {
-				timecb_remove(it->second);
-				read_timeouts.erase(it);
-			}
-			read_timeouts[fd] = timeout;
-			fdcb(fd, selread, wrap(fdcb_read, fd));
-		} else {
-			//warn << "disabling read fd: " << fd << "\n";
-			map<int, timecb_t *>::iterator it = read_timeouts.find(fd);
-			if( it != read_timeouts.end() ) {
-				timecb_remove(it->second);
-				read_timeouts.erase(it);
-			}
-			fdcb(fd, selread, 0);
+	for(i=0; i<add_rets.size(); i++) {
+		twait(rv, j);
+		if(add_rets[j] == NULL) {
+			fatal << "Failed to retrieve information about a node!\n";
 		}
-
-		if (interest & ZOOKEEPER_WRITE) {
-			//warn << "interest write fd: " << fd << "\n";
-			timecb_t * timeout = delaycb(tv.tv_sec, tv.tv_usec * 1000, wrap(fdcb_write_timeout, fd));
-			map<int, timecb_t *>::iterator it = write_timeouts.find(fd);
-			if( it != write_timeouts.end() ) {
-				timecb_remove(it->second);
-				write_timeouts.erase(it);
-			}
-			write_timeouts[fd] = timeout;
-			fdcb(fd, selwrite, wrap(fdcb_write, fd));
-		} else {
-			//warn << "disabling write fd: " << fd << "\n";
-			map<int, timecb_t *>::iterator it = write_timeouts.find(fd);
-			if( it != write_timeouts.end() ) {
-				timecb_remove(it->second);
-				write_timeouts.erase(it);
-			}
-			fdcb(fd, selwrite, 0);
-		}
-	} else {
-		fatal << "got 0 fd\n";
-		fd = 0;
+		new_node.set_from_string(*add_rets[j]);
+		delete add_rets[j];
+		zoo_nodes[add_ids[j]] = new_node;
+		node_added(new_node);
 	}
-}
 
-void zoo_interest_timer() {
-	do_zoo_interest();
-	delaycb(0, 1000 * 1000, wrap(zoo_interest_timer));
 }
 
 tamed static void
@@ -1684,6 +1290,13 @@ register_to_manager(int my_port, str h, int port) {
 		ostringstream ss;
 		unsigned int i;
 		string my_ip;
+		bool ret;
+		vector<string> * node_list;
+		string find;
+		string search;
+		string * found;
+		vector<string *> node_vals;
+		Node new_node;
 	}
 
 	manager_hostname = h;
@@ -1705,20 +1318,54 @@ register_to_manager(int my_port, str h, int port) {
 	ss << my_ip << " " << my_port << " " << my_id.toString();
 	my_node_str = ss.str();
 
-	zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
 	ss.str("");
 	ss << manager_hostname << ":" << manager_port;
-	zh = zookeeper_init(ss.str().c_str(), watcher, 10000, 0, 0, 0);
-	if(!zh) {
-		fatal << "ZooKeeper initialization failed\n";
-	}
-	zoo_interest_timer();
 
-/*	for(i=0; i<ret.nodes.size(); i++) {
-		Node cur(ret.nodes[i]);
-		ring[cur.getId()] = cur;
+	twait { czoo_init( ss.str().c_str(), mkevent(ret)); }
+	if(!ret) {
+		fatal << "Couldn't connect to manager!\n";
 	}
-	update_my_ptr();*/
+
+	twait { czoo_create( "/nodes", "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
+	if(!ret) {
+		fatal << "Error when trying to create root node!\n";
+	}
+
+	twait { czoo_create( "/nodes/", my_node_str, &ZOO_OPEN_ACL_UNSAFE,
+							ZOO_EPHEMERAL | ZOO_SEQUENCE, mkevent(ret)); }
+	if(!ret) {
+		fatal << "Error when trying to create my node!\n";
+	}
+
+	twait { czoo_get_children("/nodes", &node_list_watcher, mkevent(node_list)); }
+	if(node_list == NULL) {
+		fatal << "Error retrieving initial node list!\n";
+	}
+	zoo_node_count = (*node_list).size();
+	node_vals.resize((*node_list).size());
+	twait {
+		for(i=0; i<(*node_list).size(); i++) {
+			find = (*node_list)[i];
+			search = "/nodes/" + find;
+			czoo_get(search, mkevent(node_vals[i]));
+		}
+	}
+
+	for(i=0; i<node_vals.size(); i++) {
+		if(node_vals[i] == NULL) {
+			fatal << "Error occurred retrieving initial node value!\n";
+		}
+		new_node.set_from_string(*node_vals[i]);
+		ring[new_node.getId()] = new_node;
+		zoo_nodes[(*node_list)[i]] = new_node;
+		warn << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
+		delete node_vals[i];
+	}
+
+	delete node_list;
+
+	update_my_ptr();
+	ring_init = true;
 
 }
 

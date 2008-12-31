@@ -24,16 +24,17 @@ OBJS=craq_rpc.o \
 		ID_Value.o \
 		Node.o \
 		MemStorage.o \
-		connection_pool.o
+		connection_pool.o \
+		zoo_craq.o
 
 all: manager \
 	chain_node \
-	manager_test \
-	single_write_read \
-	multi_read_write \
-	writer \
-	reader \
-	single_reader
+	test/manager_test \
+	test/single_write_read \
+	test/multi_read_write \
+	test/writer \
+	test/reader \
+	test/single_reader
 
 
 craq_rpc.o: craq_rpc.x
@@ -53,6 +54,10 @@ Node.o: Node.h Node.cpp ID_Value.o craq_rpc.o
 MemStorage.o: MemStorage.h MemStorage.cpp Storage.h
 	$(TAME) -o MemStorage.C MemStorage.cpp
 	$(CC) $(INCLUDE) $(CFLAGS) -c MemStorage.C
+zoo_craq.o: zoo_craq.h zoo_craq.T
+	$(TAME) -o zoo_craq.C zoo_craq.T
+	$(TAME) -o zoo_craq.H zoo_craq.h
+	$(CC) $(INCLUDE) $(CFLAGS) -c zoo_craq.C
 
 manager: manager.T $(OBJS)
 	$(TAME) -o manager.C manager.T
@@ -64,32 +69,32 @@ chain_node: chain_node.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -c chain_node.C
 	$(CC) $(CFLAGS) -o chain_node chain_node.o $(OBJS) $(LIBS)
 	
-manager_test: test/manager_test.T $(OBJS)
+test/manager_test: test/manager_test.T $(OBJS)
 	$(TAME) -o test/manager_test.C test/manager_test.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/manager_test.o -c test/manager_test.C
 	$(CC) $(CFLAGS) -o test/manager_test test/manager_test.o $(OBJS) $(LIBS)
 	
-single_write_read: test/single_write_read.T $(OBJS)
+test/single_write_read: test/single_write_read.T $(OBJS)
 	$(TAME) -o test/single_write_read.C test/single_write_read.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_write_read.o -c test/single_write_read.C
 	$(CC) $(CFLAGS) -o test/single_write_read test/single_write_read.o $(OBJS) $(LIBS)
 	
-multi_read_write: test/multi_read_write.T $(OBJS)
+test/multi_read_write: test/multi_read_write.T $(OBJS)
 	$(TAME) -o test/multi_read_write.C test/multi_read_write.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/multi_read_write.o -c test/multi_read_write.C
 	$(CC) $(CFLAGS) -o test/multi_read_write test/multi_read_write.o $(OBJS) $(LIBS)
 	
-writer: test/writer.T $(OBJS)
+test/writer: test/writer.T $(OBJS)
 	$(TAME) -o test/writer.C test/writer.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/writer.o -c test/writer.C
 	$(CC) $(CFLAGS) -o test/writer test/writer.o $(OBJS) $(LIBS)
 	
-reader: test/reader.T $(OBJS)
+test/reader: test/reader.T $(OBJS)
 	$(TAME) -o test/reader.C test/reader.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/reader.o -c test/reader.C
 	$(CC) $(CFLAGS) -o test/reader test/reader.o $(OBJS) $(LIBS)
 	
-single_reader: test/single_reader.T $(OBJS)
+test/single_reader: test/single_reader.T $(OBJS)
 	$(TAME) -o test/single_reader.C test/single_reader.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_reader.o -c test/single_reader.C
 	$(CC) $(CFLAGS) -o test/single_reader test/single_reader.o $(OBJS) $(LIBS)
@@ -99,6 +104,7 @@ clean:
 		manager manager.C \
 		craq_rpc.h craq_rpc.c \
 		Node.C MemStorage.C connection_pool.C connection_pool.H \
+		zoo_craq.C zoo_craq.H \
 		test/manager_test.C test/manager_test \
 		test/single_write_read.C test/single_write_read \
 		test/multi_read_write.C test/multi_read_write \

@@ -90,7 +90,6 @@ program RPC_MANAGER {
  		bool PROPAGATE(propagate_arg) = 2;
  		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;
  		bool ACK(ack_arg) = 4;
- 		void POKE_NODE_LIST_VER(unsigned) = 5; 
  		bool BACK_PROPAGATE(propagate_arg) = 6;
  		bool NO_OP(void) = 7;
  	} = 1;
