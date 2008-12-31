@@ -18,12 +18,6 @@ void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* c
         if (state == ZOO_CONNECTED_STATE) {
         	warn << "Connected to ZooKeeper.\n";
         	TRIGGER( init_cb, true );
-            /*int rc = zoo_acreate(zh, "/nodes", "", 0,
-            		&ZOO_OPEN_ACL_UNSAFE, 0,
-            		&created_root, 0);
-            if(rc) {
-            	fatal << "Received error " << rc << " when creating root node.\n";
-            }*/
         } else if (state == ZOO_AUTH_FAILED_STATE) {
             fatal << "ZooKeeper Authentication failed.\n";
         } else if (state == ZOO_EXPIRED_SESSION_STATE) {
@@ -45,10 +39,6 @@ void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* c
     	if(it != czoo_get_children_watches.end()) {
     		(it->second)(the_path, NULL);
     	}
-        /*int r = zoo_aget_children(zh, "/nodes", 1, &updated_node_list, 0);
-        if(r) {
-        	fatal << "Received error " << r << " when getting updated node list.\n";
-        }*/
     } else if( type == ZOO_NOTWATCHING_EVENT ) {
 
     }
