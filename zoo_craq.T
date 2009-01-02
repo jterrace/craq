@@ -8,7 +8,7 @@ zhandle_t * zh;
 map<int, timecb_t *> read_timeouts;
 map<int, timecb_t *> write_timeouts;
 
-map<int, ptr<callback<void, bool> > > czoo_create_cbs;
+map<int, ptr<callback<void, int> > > czoo_create_cbs;
 map<int, ptr<callback<void, vector<string> *> > > czoo_get_children_cbs;
 map<string, czoo_get_children_watcher> czoo_get_children_watches;
 map<int, ptr<callback<void, string *> > > czoo_get_cbs;
@@ -168,13 +168,13 @@ czoo_init(const char * host, ptr<callback<void, bool> > cb) {
 
 void czoo_created(int rc, const char *name, const void *data) {
 	int * where = (int *)data;
-	bool status = true;
+	/*bool status = true;
     if ( !(rc==ZOK || rc==ZNODEEXISTS) ) {
         status = false;
-    }
-    map<int, ptr<callback<void, bool> > >::iterator it = czoo_create_cbs.find(*where);
+    }*/
+    map<int, ptr<callback<void, int> > >::iterator it = czoo_create_cbs.find(*where);
     if(it != czoo_create_cbs.end()) {
-    	TRIGGER( it->second, status);
+    	TRIGGER( it->second, rc);
     	czoo_create_cbs.erase(it);
     }
     delete where;
@@ -182,12 +182,12 @@ void czoo_created(int rc, const char *name, const void *data) {
 
 
 tamed void
-czoo_create( string path, string value, const struct ACL_vector *acl, int flags, ptr<callback<void, bool> > cb ) {
+czoo_create( string path, string value, const struct ACL_vector *acl, int flags, ptr<callback<void, int> > cb ) {
     int * where = new int;
 	if(czoo_create_cbs.size()==0) {
     	*where = 0;
     } else {
-    	map<int, ptr<callback<void, bool> > >::iterator it = czoo_create_cbs.end();
+    	map<int, ptr<callback<void, int> > >::iterator it = czoo_create_cbs.end();
     	it--;
     	*where = it->first + 1;
     }

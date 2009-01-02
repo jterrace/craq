@@ -5,7 +5,8 @@ CFLAGS= -g -static -O2 -Wall -Werror -Wno-unused -Wno-sign-compare
 
 INCLUDE= -I/usr/local/include/sfslite \
 			-I/usr/include/crypto++ \
-			-I/usr/local/include/c-client-src
+			-I/usr/local/include/c-client-src \
+			-I./
 
 SFS_LIB_DIR=/usr/local/lib/sfslite
 

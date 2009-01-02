@@ -19,6 +19,7 @@
 #include "connection_pool.H"
 #include "zookeeper.h"
 #include "zoo_craq.H"
+#include <tclap/CmdLine.h>
 
 #define BUG 1
 
@@ -65,6 +66,7 @@ static void propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_back_propagate(svccb * sbp, CLOSURE);
 static void back_propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_ack(svccb * sbp, CLOSURE);
+static void process_add_chain(svccb * sbp, CLOSURE);
 static void ack(ID_Value id, cbb cb, CLOSURE);
 static void report_bad_node(Node n, CLOSURE);
 static void node_added(Node node_changed, CLOSURE);
@@ -88,6 +90,7 @@ string my_node_str;
 bool ring_init = false;
 ring_iter my_node_ptr;
 ID_Value my_id;
+string datacenter;
 
 map<ID_Value, key_meta> key_meta_list;
 
@@ -651,6 +654,43 @@ tamed void process_ack(svccb * sbp) {
 
 }
 
+tamed void process_add_chain(svccb * sbp) {
+	tvars {
+		add_chain_arg parg;
+		ID_Value id;
+		u_int chain_size;
+		ostringstream ss;
+		int i;
+		string node_id;
+		string node_val;
+		int ret;
+	}
+
+	parg = *(sbp->getarg<add_chain_arg>());
+	if(BUG) warn << "Got ADD_CHAIN Request\n";
+
+	id.set_from_rpc(parg.id);
+	chain_size = parg.chain_size;
+	
+	if(chain_size < 1 || parg.data_centers.size() < 1) {
+		sbp->replyref(false);
+	}
+
+	ss << chain_size;
+	for(i=0; i<parg.data_centers.size(); i++) {
+		ss << " " << parg.data_centers[i];
+	}
+	
+	node_id = id.toString();
+	node_val = ss.str();
+	
+	twait { czoo_create( "/keys/" + node_id, node_val, &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
+	if(!(ret == ZOK)) {
+		sbp->replyref(false);
+	}
+
+}
+
 tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 	tvars {
 		key_iter it;
@@ -918,6 +958,9 @@ void rpc_server::dispatch(svccb * sbp) {
  			break;
  		case NO_OP:
  			sbp->replyref(true);
+ 			break;
+ 		case ADD_CHAIN:
+ 			process_add_chain(sbp);
  			break;
 		default: {
 			sbp->reject(PROC_UNAVAIL);
@@ -1228,7 +1271,7 @@ node_list_watcher(string path) {
     	fatal << "Updated node list while doing initial list. Not implemented.\n";
     }
 
-	twait { czoo_get_children("/nodes", &node_list_watcher, mkevent(ret_node_list)); }
+	twait { czoo_get_children("/nodes" + datacenter, &node_list_watcher, mkevent(ret_node_list)); }
 	if(ret_node_list == NULL) {
 		fatal << "Error retrieving updated node list!\n";
 	}
@@ -1263,7 +1306,7 @@ node_list_watcher(string path) {
 	add_ids.resize(to_add.size());
 	add_rets.resize(to_add.size());
 	for( i=0, it = to_add.begin(); it != to_add.end(); i++, it++ ) {
-		search = "/nodes/" + (*it);
+		search = "/nodes/" + datacenter + (*it);
 		add_ids[i] = *it;
         czoo_get(search, mkevent(rv, i, add_rets[i]));
 	}
@@ -1290,7 +1333,8 @@ register_to_manager(int my_port, str h, int port) {
 		ostringstream ss;
 		unsigned int i;
 		string my_ip;
-		bool ret;
+		int ret;
+		bool rc;
 		vector<string> * node_list;
 		string find;
 		string search;
@@ -1321,23 +1365,33 @@ register_to_manager(int my_port, str h, int port) {
 	ss.str("");
 	ss << manager_hostname << ":" << manager_port;
 
-	twait { czoo_init( ss.str().c_str(), mkevent(ret)); }
-	if(!ret) {
+	twait { czoo_init( ss.str().c_str(), mkevent(rc)); }
+	if(!rc) {
 		fatal << "Couldn't connect to manager!\n";
 	}
 
 	twait { czoo_create( "/nodes", "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
-	if(!ret) {
+	if( !(ret == ZOK || ret == ZNODEEXISTS) ) {
 		fatal << "Error when trying to create root node!\n";
 	}
 
-	twait { czoo_create( "/nodes/", my_node_str, &ZOO_OPEN_ACL_UNSAFE,
+	twait { czoo_create( "/keys", "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
+	if(!(ret == ZOK || ret == ZNODEEXISTS)) {
+		fatal << "Error when trying to create keys node!\n";
+	}
+
+	twait { czoo_create( "/nodes/" + datacenter, "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
+	if(!(ret == ZOK || ret == ZNODEEXISTS)) {
+		fatal << "Error when trying to create root data center node!\n";
+	}
+
+	twait { czoo_create( "/nodes/" + datacenter + "/", my_node_str, &ZOO_OPEN_ACL_UNSAFE,
 							ZOO_EPHEMERAL | ZOO_SEQUENCE, mkevent(ret)); }
-	if(!ret) {
+	if(!(ret == ZOK)) {
 		fatal << "Error when trying to create my node!\n";
 	}
 
-	twait { czoo_get_children("/nodes", &node_list_watcher, mkevent(node_list)); }
+	twait { czoo_get_children("/nodes/" + datacenter + "/", &node_list_watcher, mkevent(node_list)); }
 	if(node_list == NULL) {
 		fatal << "Error retrieving initial node list!\n";
 	}
@@ -1346,7 +1400,7 @@ register_to_manager(int my_port, str h, int port) {
 	twait {
 		for(i=0; i<(*node_list).size(); i++) {
 			find = (*node_list)[i];
-			search = "/nodes/" + find;
+			search = "/nodes/" + datacenter + find;
 			czoo_get(search, mkevent(node_vals[i]));
 		}
 	}
@@ -1376,35 +1430,32 @@ void main2(int argc, char **argv) {
 	str type;
 	int manager_port;
 
-	if(argc > 4) type = argv[1];
-	if(type == "CRAQ") {
-		CRAQ = true;
-	} else {
-		CRAQ = false;
-	}
-
-	if (argc == 5 && convertint (argv[2], &listen_port)
-				  		 && convertint(argv[4], &manager_port) &&
-				  		 (type=="CR" || type=="CRAQ") ) {
-		user_ip = "";
-	 	manager_hostname = argv[3];
+	try
+	{
+		TCLAP::CmdLine cmd("Command description message", ' ', "0.1");
+		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
+		TCLAP::ValueArg<int> managerPort("r", "manager_port", "Manager port number", true, 0, "int", cmd);
+		TCLAP::ValueArg<int> listenPort("p", "listen_port", "Port to listen for connections", true, 0, "int", cmd);
+		TCLAP::ValueArg<string> ipAddress("i", "ip_address", "IP Address to listen for connections", false, "", "string", cmd);
+		TCLAP::SwitchArg crSwitch("c", "chain_replication", "Sets node to CR instead of CRAQ", cmd, true);
+		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Sets the data center name this node belongs to", true, "", "string", cmd);
+		cmd.parse(argc, argv);
+		
+		manager_hostname = managerHost.getValue().c_str();
+		manager_port = managerPort.getValue();
+		listen_port = listenPort.getValue();
+		user_ip = ipAddress.getValue().c_str();
+		CRAQ = crSwitch.getValue();
+		datacenter = dataCenter.getValue();
+		
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, manager_hostname, manager_port);
-	} else if(argc == 6 && convertint (argv[2], &listen_port)
-				  		 && convertint(argv[4], &manager_port) &&
-				  		 (type=="CR" || type=="CRAQ")) {
-		user_ip = argv[5];
-	 	manager_hostname = argv[3];
-		start_rpc_srv(listen_port);
-		register_to_manager(listen_port, manager_hostname, manager_port);
-	} else {
-		fatal << "usage: chain_node <type> <listen_port> <manager_hostname>\n"
-			  << "<manager_port> [<ip_address>]\n"
-			  << "  - connects to manager and joins the network. <type> can\n"
-			  << "    be CR or CRAQ. Optionally set <ip_address> if multiple\n"
-			  << "    interfaces.\n";
-		exit(1);
 	}
+	catch (TCLAP::ArgException &e)  // catch any exceptions
+	{
+		fatal << "error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
+	}
+	
 }
 
 int main (int argc, char *argv[]) {

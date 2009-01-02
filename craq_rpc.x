@@ -79,12 +79,19 @@ program RPC_MANAGER {
  	bool dirty;
  };
  
+ struct add_chain_arg {
+ 	rpc_hash id;
+ 	rpc_string data_centers<>;
+ 	unsigned chain_size;
+ };
+ 
  program CHAIN_NODE {
  	version CHAIN_NODE_VERSION {
  		//External functions
  		blob TAIL_READ(rpc_hash) = 0;
  		bool HEAD_WRITE(head_write_arg) = 1;
   		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
+  		bool ADD_CHAIN(add_chain_arg) = 9;
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;

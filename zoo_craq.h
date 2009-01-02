@@ -33,9 +33,9 @@ extern void czoo_fdcb_write(int fd);
 extern ptr<callback<void, bool> > init_cb;
 extern void czoo_init(const char * host, ptr<callback<void, bool> > cb, CLOSURE);
 
-extern map<int, ptr<callback<void, bool> > > czoo_create_cbs;
+extern map<int, ptr<callback<void, int> > > czoo_create_cbs;
 extern void czoo_create( string path, string value, const struct ACL_vector *acl,
-							int flags, ptr<callback<void, bool> > cb, CLOSURE );
+							int flags, ptr<callback<void, int> > cb, CLOSURE );
 extern void czoo_created(int rc, const char *name, const void *data);
 
 typedef void (*czoo_get_children_watcher)(string, ptr<closure_t>);
