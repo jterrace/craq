@@ -671,23 +671,30 @@ tamed void process_add_chain(svccb * sbp) {
 
 	id.set_from_rpc(parg.id);
 	chain_size = parg.chain_size;
-	
+
 	if(chain_size < 1 || parg.data_centers.size() < 1) {
-		sbp->replyref(false);
+		sbp->replyref(ADD_CHAIN_FAILURE);
+		return;
 	}
 
 	ss << chain_size;
 	for(i=0; i<parg.data_centers.size(); i++) {
 		ss << " " << parg.data_centers[i];
 	}
-	
+
 	node_id = id.toString();
 	node_val = ss.str();
-	
+
 	twait { czoo_create( "/keys/" + node_id, node_val, &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
-	if(!(ret == ZOK)) {
-		sbp->replyref(false);
+	if(ret == ZNODEEXISTS) {
+		sbp->replyref(ADD_CHAIN_EXISTS);
+		return;
+	} else if(!(ret == ZOK)) {
+		sbp->replyref(ADD_CHAIN_FAILURE);
+		return;
 	}
+
+	sbp->replyref(ADD_CHAIN_SUCCESS);
 
 }
 
@@ -1391,7 +1398,7 @@ register_to_manager(int my_port, str h, int port) {
 		fatal << "Error when trying to create my node!\n";
 	}
 
-	twait { czoo_get_children("/nodes/" + datacenter + "/", &node_list_watcher, mkevent(node_list)); }
+	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
 	if(node_list == NULL) {
 		fatal << "Error retrieving initial node list!\n";
 	}
@@ -1400,7 +1407,7 @@ register_to_manager(int my_port, str h, int port) {
 	twait {
 		for(i=0; i<(*node_list).size(); i++) {
 			find = (*node_list)[i];
-			search = "/nodes/" + datacenter + find;
+			search = "/nodes/" + datacenter + "/" + find;
 			czoo_get(search, mkevent(node_vals[i]));
 		}
 	}
@@ -1440,14 +1447,14 @@ void main2(int argc, char **argv) {
 		TCLAP::SwitchArg crSwitch("c", "chain_replication", "Sets node to CR instead of CRAQ", cmd, true);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Sets the data center name this node belongs to", true, "", "string", cmd);
 		cmd.parse(argc, argv);
-		
+
 		manager_hostname = managerHost.getValue().c_str();
 		manager_port = managerPort.getValue();
 		listen_port = listenPort.getValue();
 		user_ip = ipAddress.getValue().c_str();
 		CRAQ = crSwitch.getValue();
 		datacenter = dataCenter.getValue();
-		
+
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, manager_hostname, manager_port);
 	}
@@ -1455,7 +1462,7 @@ void main2(int argc, char **argv) {
 	{
 		fatal << "error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
 	}
-	
+
 }
 
 int main (int argc, char *argv[]) {

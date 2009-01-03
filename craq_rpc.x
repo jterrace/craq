@@ -79,6 +79,12 @@ program RPC_MANAGER {
  	bool dirty;
  };
  
+enum add_chain_ret {
+	ADD_CHAIN_SUCCESS = 0,
+	ADD_CHAIN_FAILURE = 1,
+	ADD_CHAIN_EXISTS = 2
+};
+ 
  struct add_chain_arg {
  	rpc_hash id;
  	rpc_string data_centers<>;
@@ -91,7 +97,7 @@ program RPC_MANAGER {
  		blob TAIL_READ(rpc_hash) = 0;
  		bool HEAD_WRITE(head_write_arg) = 1;
   		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
-  		bool ADD_CHAIN(add_chain_arg) = 9;
+  		add_chain_ret ADD_CHAIN(add_chain_arg) = 9;
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;
