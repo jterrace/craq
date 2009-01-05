@@ -47,37 +47,51 @@ program RPC_MANAGER {
 /* Chain Node RPC types and functions
  * =============================== */
  
- struct head_write_arg {
+struct head_write_arg {
+ 	rpc_hash chain;
  	rpc_hash id;
- 	blob data;
- };
+	blob data;
+};
  
- struct propagate_arg {
+struct propagate_arg {
+ 	rpc_hash chain;
  	rpc_hash id;
  	unsigned ver;
  	blob data;
  	bool committed;
- };
+};
  
- struct ack_arg {
+struct ack_arg {
+ 	rpc_hash chain;
  	rpc_hash id;
  	unsigned ver;
- };
+};
  
- struct query_obj_ver_ret {
+struct query_obj_ver_arg {
+ 	rpc_hash chain;
+ 	rpc_hash id;
+};
+ 
+struct query_obj_ver_ret {
  	int hist;
  	int pend;
- };
+};
  
- struct tail_read_ex_arg {
+struct tail_read_arg {
+ 	rpc_hash chain;
+ 	rpc_hash id;
+};
+ 
+struct tail_read_ex_arg {
+ 	rpc_hash chain;
  	rpc_hash id;
  	bool dirty;
- };
+};
  
- struct tail_read_ex_ret {
+struct tail_read_ex_ret {
  	blob data;
  	bool dirty;
- };
+};
  
 enum add_chain_ret {
 	ADD_CHAIN_SUCCESS = 0,
@@ -85,26 +99,26 @@ enum add_chain_ret {
 	ADD_CHAIN_EXISTS = 2
 };
  
- struct add_chain_arg {
+struct add_chain_arg {
  	rpc_hash id;
  	rpc_string data_centers<>;
  	unsigned chain_size;
- };
+};
  
- program CHAIN_NODE {
- 	version CHAIN_NODE_VERSION {
+program CHAIN_NODE {
+	version CHAIN_NODE_VERSION {
  		//External functions
- 		blob TAIL_READ(rpc_hash) = 0;
+ 		blob TAIL_READ(rpc_hash) = 0;   /* TODO: tail_read_arg */
  		bool HEAD_WRITE(head_write_arg) = 1;
   		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
   		add_chain_ret ADD_CHAIN(add_chain_arg) = 9;
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;
- 		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;
+ 		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;  /* TODO: query_obj_ver_arg */
  		bool ACK(ack_arg) = 4;
  		bool BACK_PROPAGATE(propagate_arg) = 6;
  		bool NO_OP(void) = 7;
- 	} = 1;
- } = 21212;
+	} = 1;
+} = 21212;
 /* ====================== */

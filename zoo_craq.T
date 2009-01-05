@@ -16,7 +16,7 @@ map<int, ptr<callback<void, string *> > > czoo_get_cbs;
 void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* context) {
     if (type == ZOO_SESSION_EVENT) {
         if (state == ZOO_CONNECTED_STATE) {
-        	warn << "Connected to ZooKeeper.\n";
+        	//warn << "Connected to ZooKeeper.\n";
         	TRIGGER( init_cb, true );
         } else if (state == ZOO_AUTH_FAILED_STATE) {
             fatal << "ZooKeeper Authentication failed.\n";
@@ -156,9 +156,9 @@ void czoo_interest_timer() {
 }
 
 tamed void
-czoo_init(const char * host, ptr<callback<void, bool> > cb) {
+czoo_init(const char * host, ptr<callback<void, bool> > cb, ZooLogLevel log_level) {
 	init_cb = cb;
-	zoo_set_debug_level(ZOO_LOG_LEVEL_INFO);
+	zoo_set_debug_level(log_level);
 	zh = zookeeper_init(host, &czoo_watcher, 10000, 0, 0, 0);
 	if(!zh) {
 		TRIGGER( cb, false );

@@ -45,6 +45,11 @@ public:
 
 Storage * storage = new MemStorage();
 
+struct chain_meta {
+	unsigned int chain_size;
+	vector<string> data_centers;
+};
+
 struct key_meta {
 	unsigned int committed;
 	unsigned int max_pending;
@@ -57,20 +62,24 @@ struct key_meta {
 typedef map<ID_Value, Node>::iterator ring_iter;
 typedef map<ID_Value, key_meta>::iterator key_iter;
 
+static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain_meta> > > cb, CLOSURE);
 static void process_query_obj_ver(svccb * sbp, CLOSURE);
 static void process_tail_read(svccb * sbp, CLOSURE);
 static void process_tail_read_ex(svccb * sbp, CLOSURE);
 static void process_head_write(svccb * sbp, CLOSURE);
 static void process_propagate(svccb * sbp, CLOSURE);
-static void propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
+static void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_back_propagate(svccb * sbp, CLOSURE);
 static void back_propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_ack(svccb * sbp, CLOSURE);
 static void process_add_chain(svccb * sbp, CLOSURE);
-static void ack(ID_Value id, cbb cb, CLOSURE);
+static void ack(ID_Value chain_id, ID_Value id, cbb cb, CLOSURE);
 static void report_bad_node(Node n, CLOSURE);
 static void node_added(Node node_changed, CLOSURE);
 static void node_deleted(Node node_changed, CLOSURE);
+static void ext_ring_ptr(chain_meta chain, string dc, ptr<callback<void, ptr<map<string, map<ID_Value, Node> >::iterator > > > cb, CLOSURE);
+static void ext_ring_succ(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb, CLOSURE);
+static void ext_ring_pred(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb, CLOSURE);
 
 ring_iter ring_succ(ID_Value id);
 void ring_incr(ring_iter * it);
@@ -93,6 +102,8 @@ ID_Value my_id;
 string datacenter;
 
 map<ID_Value, key_meta> key_meta_list;
+map<ID_Value, chain_meta> chain_meta_list;
+map<string, map<ID_Value, Node> > ext_rings;
 
 bool update_running = false;
 
@@ -143,6 +154,185 @@ ID_Value get_sha1(string msg)
 	SHA().CalculateDigest(buffer, (byte *)msg.c_str(), msg.length());
 	ID_Value ret(buffer);
  	return ret;
+}
+
+tamed void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain_meta> > > cb) {
+	tvars {
+		ptr<chain_meta> ret;
+		string * val;
+		istringstream iss;
+		string dc;
+		map<ID_Value, chain_meta>::iterator it;
+	}
+
+	it = chain_meta_list.find(chain_id);
+	if(it != chain_meta_list.end()) {
+		ret = New refcounted<chain_meta>;
+		*ret = it->second;
+		TRIGGER(cb, ret);
+		return;
+	}
+
+	twait{ czoo_get("/keys/" + chain_id.toString(), mkevent(val)); }
+	if(val == NULL) {
+		ret = NULL;
+		TRIGGER(cb, ret);
+		return;
+	}
+
+	ret = New refcounted<chain_meta>;
+	iss.str(*val);
+	delete val;
+	if(!(iss >> ret->chain_size)) {
+		fatal << "Got bad value back from zookeeper chain node!\n";
+	}
+	while(!iss.eof()) {
+		iss >> dc;
+		ret->data_centers.push_back(dc);
+	}
+	if(ret->data_centers.size() < 1) {
+		fatal << "Got no data centers back from zookeeper chain node!\n";
+	}
+
+	chain_meta_list[chain_id] = *ret;
+	TRIGGER(cb, ret);
+
+}
+
+tamed void ext_ring_ptr(chain_meta chain, string dc, ptr<callback<void, ptr<map<string, map<ID_Value, Node> >::iterator> > > cb) {
+	//TODO: Need to fix to deal with concurrent calls and watch value changes
+	tvars {
+		string dc_find;
+		int i;
+		ptr<map<string, map<ID_Value, Node> >::iterator> ret;
+		map<string, map<ID_Value, Node> >::iterator it;
+		map<ID_Value, Node>::iterator itt;
+		vector<string> * node_list;
+		vector<string *> node_vals;
+		string find;
+		string search;
+		Node new_node;
+		map<ID_Value, Node> new_ext_ring;
+	}
+
+	dc_find = dc;
+
+	it = ext_rings.find(dc_find);
+	if(it != ext_rings.end()) {
+		ret = New refcounted<map<string, map<ID_Value, Node> >::iterator>;
+		*ret = it;
+		TRIGGER(cb, ret);
+		return;
+	}
+
+	//TODO: Possible flash flood here
+	twait { czoo_get_children("/nodes/" + dc_find, NULL, mkevent(node_list)); }
+	if(node_list == NULL) {
+		fatal << "Error retrieving external node list!\n";
+	}
+	node_vals.resize((*node_list).size());
+	twait {
+		for(i=0; i<(*node_list).size(); i++) {
+			find = (*node_list)[i];
+			search = "/nodes/" + dc_find + "/" + find;
+			czoo_get(search, mkevent(node_vals[i]));
+		}
+	}
+
+	for(i=0; i<node_vals.size(); i++) {
+		if(node_vals[i] == NULL) {
+			fatal << "Error occurred retrieving external node value!\n";
+		}
+		new_node.set_from_string(*node_vals[i]);
+		new_ext_ring[new_node.getId()] = new_node;
+		delete node_vals[i];
+	}
+	delete node_list;
+	ext_rings[dc_find] = new_ext_ring;
+
+	it = ext_rings.find(dc_find);
+	ret = New refcounted<map<string, map<ID_Value, Node> >::iterator>;
+	*ret = it;
+	TRIGGER(cb, ret);
+
+}
+
+tamed void ext_ring_succ(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb) {
+	tvars {
+		ptr<map<string, map<ID_Value, Node> >::iterator> val;
+		map<ID_Value, Node>::iterator it;
+		ptr<Node> ret;
+		u_int i;
+		string dc_find;
+	}
+
+	for(i=0; i<chain.data_centers.size(); i++) {
+		if(chain.data_centers[i] == datacenter)
+			break;
+	}
+	if(chain.data_centers.size() == 1 ||
+			i>=chain.data_centers.size()-1) {
+		TRIGGER(cb, NULL);
+		return;
+	} else {
+		dc_find = chain.data_centers[i+1];
+	}
+
+	twait { ext_ring_ptr(chain, dc_find, mkevent(val)); }
+	if(val == NULL) {
+		TRIGGER(cb, NULL);
+		return;
+	}
+
+	it = (*val)->second.lower_bound(id);
+	if(it == (*val)->second.end())
+		it = (*val)->second.begin();
+
+	ret = New refcounted<Node>;
+	*ret = it->second;
+	TRIGGER(cb, ret);
+}
+
+tamed void ext_ring_pred(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb) {
+	tvars {
+		ptr<map<string, map<ID_Value, Node> >::iterator> val;
+		map<ID_Value, Node>::iterator it;
+		ptr<Node> ret;
+		u_int i;
+		string dc_find;
+	}
+
+	for(i=0; i<chain.data_centers.size(); i++) {
+		if(chain.data_centers[i] == datacenter)
+			break;
+	}
+	if(chain.data_centers.size() == 1 ||
+			i<=0) {
+		TRIGGER(cb, NULL);
+		return;
+	} else {
+		dc_find = chain.data_centers[i-1];
+	}
+
+	twait { ext_ring_ptr(chain, dc_find, mkevent(val)); }
+	if(val == NULL) {
+		TRIGGER(cb, NULL);
+		return;
+	}
+
+	it = (*val)->second.lower_bound(id);
+	if(it == (*val)->second.end())
+		it = (*val)->second.begin();
+
+	for(i=0; i<chain.chain_size-1; i++) {
+		it++;
+		if(it == (*val)->second.end())
+			it = (*val)->second.begin();
+	}
+
+	ret = New refcounted<Node>;
+	*ret = it->second;
+	TRIGGER(cb, ret);
 }
 
 tamed void process_query_obj_ver(svccb * sbp) {
@@ -377,22 +567,37 @@ tamed void process_head_write(svccb * sbp) {
 	tvars {
 		head_write_arg parg;
 		ID_Value id;
+		ID_Value chain_id;
 		key_iter it;
 		ring_iter parent_ptr;
 		key_meta wrt;
 		bool ret_val;
-	}
-
-	//Reject writes unless we can form a chain
-	if(ring.size() < CHAIN_SIZE) {
-		sbp->replyref(false);
-		return;
+		ptr<chain_meta> chain_info;
 	}
 
 	parg = *(sbp->getarg<head_write_arg>());
 	if(BUG) warn << "Got HEAD_WRITE Request\n";
-
 	id.set_from_rpc(parg.id);
+	chain_id.set_from_rpc(parg.chain);
+
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//Reject writes unless we can form a chain
+	if(ring.size() < chain_info->chain_size) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//Reject if first data center is not us
+	if(chain_info->data_centers[0] != datacenter) {
+		sbp->replyref(false);
+		return;
+	}
+
 	it = key_meta_list.find(id);
 
 	//If we're not the head, reject the request
@@ -404,7 +609,7 @@ tamed void process_head_write(svccb * sbp) {
 	parent_ptr = my_node_ptr;
 	ring_decr(&parent_ptr);
 
-	if(it == key_meta_list.end() && !id.between(parent_ptr->first, my_id)) {
+	if(it == key_meta_list.end() && !id.betweenIncl(parent_ptr->first, my_id)) {
 		//Reply false if we don't think we should be the head
 		sbp->replyref(false);
 		return;
@@ -412,7 +617,11 @@ tamed void process_head_write(svccb * sbp) {
 		//Create new key if this is the first
 		wrt.committed = 0;
 		wrt.max_pending = 1;
-		wrt.is_tail = false;
+		if(chain_info->chain_size == 1) {
+			wrt.is_tail = true;
+		} else {
+			wrt.is_tail = false;
+		}
 		wrt.is_head = true;
 		wrt.pending_list[1] = parg.data;
 		wrt.write_reqs[1].push_back(sbp);
@@ -426,27 +635,49 @@ tamed void process_head_write(svccb * sbp) {
 		key_meta_list[id] = wrt;
 	}
 
-	twait { propagate(id, false, mkevent(ret_val)); }
+	twait { propagate(chain_id, id, false, mkevent(ret_val)); }
 }
 
 tamed void process_propagate(svccb * sbp) {
 	tvars {
 		propagate_arg parg;
 		ID_Value id;
+		ID_Value chain_id;
 		key_iter kit;
 		ring_iter t;
 		key_meta wrt;
 		u_int i;
 		bool in_succ;
 		bool ret_val;
+		ptr<chain_meta> chain_info;
 	}
 
 	parg = *(sbp->getarg<propagate_arg>());
 	if(BUG) warn << "Got PROPAGATE Request\n";
 	if(BUG) warn << "Received Propagate key of size " << parg.data.size() << "\n";
 
-	id.set_from_rpc(parg.id);
+	chain_id.set_from_rpc(parg.chain);
 
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		fatal << "Couldn't get chain info in propagate!\n";
+		sbp->replyref(false);
+		return;
+	}
+
+	in_succ = false;
+	for(i=0; i<chain_info->data_centers.size(); i++) {
+		if(chain_info->data_centers[i] == datacenter) {
+			in_succ = true;
+		}
+	}
+	//Return false if we don't think we should be storing a replica of this key
+	if(!in_succ) {
+		sbp->replyref(false);
+		return;
+	}
+
+	id.set_from_rpc(parg.id);
 	kit = key_meta_list.find(id);
 
 	//Reply true if we already have a higher or equal version
@@ -465,14 +696,14 @@ tamed void process_propagate(svccb * sbp) {
 
 	t = ring_succ(id);
 	in_succ = false;
-	for(i=0; i<CHAIN_SIZE; i++) {
+	for(i=0; i<chain_info->chain_size; i++) {
 		if(t == my_node_ptr) {
 			in_succ = true;
 			break;
 		}
 		ring_incr(&t);
 	}
-	if(i == CHAIN_SIZE-1)
+	if(i == chain_info->chain_size-1)
 		wrt.is_tail = true;
 	if(i == 0)
 		wrt.is_head = true;
@@ -488,6 +719,7 @@ tamed void process_propagate(svccb * sbp) {
 
 	//Update meta key
 	if(parg.committed == true) {
+		//TODO: set storage based on chain and key not just key!
 		storage->set(id, &parg.data);
 		wrt.committed = parg.ver;
 		if(wrt.max_pending < wrt.committed)
@@ -497,19 +729,21 @@ tamed void process_propagate(svccb * sbp) {
 		wrt.max_pending = parg.ver;
 		wrt.pending_list[parg.ver] = parg.data;
 	}
-	if(wrt.is_tail) {
+	if(wrt.is_tail &&
+			chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
 		wrt.committed = wrt.max_pending;
 		storage->set(id, &wrt.pending_list[wrt.max_pending]);
 		wrt.pending_list.clear();
 	}
 	key_meta_list[id] = wrt;
 
-	if(!wrt.is_tail) {
+	if(wrt.is_tail &&
+			chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
 		sbp->replyref(true);
-		twait { propagate(id, parg.committed, mkevent(ret_val)); }
+		twait { ack(chain_id, id, mkevent(ret_val)); }
 	} else {
 		sbp->replyref(true);
-		twait { ack(id, mkevent(ret_val)); }
+		TODO: twait { propagate(chain_id, id, parg.committed, mkevent(ret_val)); }
 	}
 
 }
@@ -649,7 +883,7 @@ tamed void process_ack(svccb * sbp) {
 
 	sbp->replyref(true);
 	if(!kit->second.is_head) {
-		twait { ack(id, mkevent(ret_val)); }
+		//TODO: twait { ack(id, mkevent(ret_val)); }
 	}
 
 }
@@ -698,10 +932,11 @@ tamed void process_add_chain(svccb * sbp) {
 
 }
 
-tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
+tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb) {
 	tvars {
 		key_iter it;
-		ring_iter succ;
+		ring_iter succs;
+		Node succ;
 		map<int, blob>::iterator dt_it;
 		propagate_arg arg;
 		ptr<aclnt> cli;
@@ -710,6 +945,14 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		bool ret;
 		bool rpc_ret;
 		u_int backoff;
+		ptr<chain_meta> chain_info;
+		ptr<Node> ext_succ;
+	}
+
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		TRIGGER(cb, false);
+		return;
 	}
 
 	backoff = 0;
@@ -717,43 +960,53 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 	while(!rpc_ret) {
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
-			ret = false;
-			(*cb)(ret);
+			TRIGGER(cb, false);
 			return;
 		}
 
-		if(it->second.is_tail) {
-			ret = true;
-			(*cb)(ret);
+		//if tail of last data center, done
+		if(it->second.is_tail &&
+				chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
+			TRIGGER(cb, true);
 			return;
 		}
-
-		succ = my_node_ptr;
-		ring_incr(&succ);
+		//if just tail of this data center, we have to go to next one
+		else if(it->second.is_tail) {
+			twait { ext_ring_succ(*chain_info, id, mkevent(ext_succ)); }
+			if(ext_succ == NULL) {
+				fatal << "Error when trying to retrieve external successor!\n";
+			}
+			succ = *ext_succ;
+		} else {
+			succs = my_node_ptr;
+			ring_incr(&succs);
+			succ = succs->second;
+		}
 
 		if(send_committed) {
 			arg.id = id.get_rpc_id();
+			arg.chain = chain_id.get_rpc_id();
 			arg.ver = it->second.committed;
 			arg.data = *(storage->get(id));
 			arg.committed = true;
 		} else {
 			dt_it = it->second.pending_list.find(it->second.max_pending);
 			if(dt_it == it->second.pending_list.end()) {
-				ret = false;
-				(*cb)(ret);
+				TRIGGER(cb, false);
 				return;
 			}
 			arg.id = id.get_rpc_id();
+			arg.chain = chain_id.get_rpc_id();
 			arg.ver = it->second.max_pending;
 			arg.data = dt_it->second;
 			arg.committed = false;
 		}
 
-		if(BUG) warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ->second.toString().c_str() << "\n";
-		twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+		if(BUG) warn << "Propagating ID " << id.toString().c_str() << " to neighbor " << succ.toString().c_str() << "\n";
+		twait { get_rpc_cli (succ.getIp().c_str(), succ.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
-			report_bad_node(succ->second);
+			report_bad_node(succ);
 			backoff++;
 			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
@@ -762,7 +1015,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(BUG) warn << "Propagating key of size " << arg.data.size() << "\n";
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
-			report_bad_node(succ->second);
+			report_bad_node(succ);
 			backoff++;
 			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
@@ -774,8 +1027,7 @@ tamed void propagate(ID_Value id, bool send_committed, cbb cb) {
 
 	}
 
-	ret = true;
-	(*cb)(ret);
+	TRIGGER(cb, true);
 	return;
 
 }
@@ -868,10 +1120,11 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 
 }
 
-tamed void ack(ID_Value id, cbb cb) {
+tamed void ack(ID_Value chain_id, ID_Value id, cbb cb) {
 	tvars {
 		key_iter it;
-		ring_iter pred;
+		ring_iter predi;
+		Node pred;
 		ack_arg arg;
 		ptr<aclnt> cli;
 		clnt_stat e;
@@ -879,32 +1132,52 @@ tamed void ack(ID_Value id, cbb cb) {
 		bool ret;
 		bool rpc_ret;
 		u_int backoff;
+		ptr<chain_meta> chain_info;
+		ptr<Node> ext_pred;
+	}
+
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		TRIGGER(cb, false);
+		return;
 	}
 
 	backoff = 0;
 	rpc_ret = false;
 	while(!rpc_ret) {
-		/*if(backoff > 10) {
-			exit(1);
-		}*/
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
-			ret = false;
-			(*cb)(ret);
+			TRIGGER(cb, false);
 			return;
 		}
 
-		pred = my_node_ptr;
-		ring_decr(&pred);
+		//if head of first data center, done
+		if(it->second.is_head &&
+				chain_info->data_centers[0] == datacenter) {
+			TRIGGER(cb, true);
+			return;
+		}
+		//if just head of this data center, we have to go to prev one
+		else if(it->second.is_head) {
+			twait { ext_ring_pred(*chain_info, id, mkevent(ext_pred)); }
+			if(ext_pred == NULL) {
+				fatal << "Error when trying to retrieve external predecessor!\n";
+			}
+			pred = *ext_pred;
+		} else {
+			predi = my_node_ptr;
+			ring_decr(&predi);
+			pred = predi->second;
+		}
 
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.committed;
 
-		if(BUG) warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred->second.toString().c_str() << "\n";
-		twait { get_rpc_cli (pred->second.getIp().c_str(), pred->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+		if(BUG) warn << "ACKing ID " << id.toString().c_str() << " to neighbor " << pred.toString().c_str() << "\n";
+		twait { get_rpc_cli (pred.getIp().c_str(), pred.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 		if( fd<0 ) {
-			report_bad_node(pred->second);
+			report_bad_node(pred);
 			backoff++;
 			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
@@ -912,7 +1185,7 @@ tamed void ack(ID_Value id, cbb cb) {
 
 		twait {	cli->call(ACK, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
-			report_bad_node(pred->second);
+			report_bad_node(pred);
 			backoff++;
 			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
 			continue;
@@ -924,8 +1197,7 @@ tamed void ack(ID_Value id, cbb cb) {
 
 	}
 
-	ret = true;
-	(*cb)(ret);
+	TRIGGER(cb, true);
 	return;
 
 }
@@ -1066,8 +1338,8 @@ tamed void node_added(Node node_changed) {
 	if(node_changed.getId().between(my_id, succ->first)) {
 		twait {
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
-				propagate(k->first, false, mkevent(ret));
-				propagate(k->first, true, mkevent(ret));
+				//TODO: propagate(k->first, false, mkevent(ret));
+				//TODO: propagate(k->first, true, mkevent(ret));
 			}
 		}
 		return;
@@ -1186,8 +1458,8 @@ tamed void node_deleted(Node node_changed) {
 	if(node_changed.getId().between(my_id, succ->first)) {
 		twait {
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
-				propagate(k->first, false, mkevent(ret));
-				propagate(k->first, true, mkevent(ret));
+				//TODO: propagate(k->first, false, mkevent(ret));
+				//TODO: propagate(k->first, true, mkevent(ret));
 			}
 		}
 		return;
@@ -1223,8 +1495,8 @@ tamed void node_deleted(Node node_changed) {
 					if(k->second.is_tail) {
 						if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
 						k->second.is_tail = false;
-						propagate(k->first, false, mkevent(ret));
-						propagate(k->first, true, mkevent(ret));
+						//TODO: propagate(k->first, false, mkevent(ret));
+						//TODO: propagate(k->first, true, mkevent(ret));
 					}
 					back_propagate(k->first, false, mkevent(ret));
 					back_propagate(k->first, true, mkevent(ret));
@@ -1245,8 +1517,8 @@ tamed void node_deleted(Node node_changed) {
 				if(k->second.is_tail) {
 					if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
 					k->second.is_tail = false;
-					propagate(k->first, false, mkevent(ret));
-					propagate(k->first, true, mkevent(ret));
+					//TODO: propagate(k->first, false, mkevent(ret));
+					//TODO: propagate(k->first, true, mkevent(ret));
 				}
 			}
 		}

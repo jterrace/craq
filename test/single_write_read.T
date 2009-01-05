@@ -44,7 +44,7 @@ connect_to_manager(str h, int port) {
 		ptr<aclnt> cli;
 		clnt_stat e;
 		u_int ver, i, j;
-		Node me, ret;
+		Node me, ret, new_node;
 		rpc_node me_rpc;
 		rpc_node_list cur_list;
 		rpc_memb_delta delt;
@@ -59,6 +59,7 @@ connect_to_manager(str h, int port) {
 		bool eqs;
 		bool rc;
 		vector<string> * node_list;
+		vector<string *> node_vals;
 		int zoo_node_count;
 		string find;
 		string search;
@@ -69,6 +70,8 @@ connect_to_manager(str h, int port) {
 	}
 
 	srand ( time(NULL) );
+
+	warn << "chain id: " << get_sha1(key_name).toString().c_str() << "\n";
 
 	ss << h << ":" << port;
 	twait { czoo_init( ss.str().c_str(), mkevent(rc)); }
@@ -83,10 +86,28 @@ connect_to_manager(str h, int port) {
 	search = "/nodes/" + data_centers[0] + "/" + find;
 	twait { czoo_get(search, mkevent(found)); }
 	assert_msg(found != NULL, "Retrieving node information...");
-
 	ret.set_from_string(*found);
 	delete found;
+
+	node_vals.resize((*node_list).size());
+	twait {
+		for(i=0; i<(*node_list).size(); i++) {
+			find = (*node_list)[i];
+			search = "/nodes/" + data_centers[0] + "/" + find;
+			czoo_get(search, mkevent(node_vals[i]));
+		}
+	}
+	warn << "Checking node list return values... ";
+	for(i=0; i<node_vals.size(); i++) {
+		if(node_vals[i] == NULL) {
+			fatal << "FAIL!\n";
+		}
+		new_node.set_from_string(*node_vals[i]);
+		ring[new_node.getId()] = new_node;
+		delete node_vals[i];
+	}
 	delete node_list;
+	warn << "SUCCESS\n";
 
 	twait { tcpconnect (ret.getIp().c_str(), ret.getPort(), mkevent(fd)); }
 	assert_msg(fd>=0, "Connecting to a random node...");
@@ -107,15 +128,13 @@ connect_to_manager(str h, int port) {
 		warn << "Warning: chain already exists!\n";
 	}
 
-
-	/*msg = "Hello Cruel World!!";
-	srand(time(NULL));
-	for(i=0; i<10; i++) {
+	msg = "";
+	for(i=0; i<key_size; i++) {
 		msg += (char)(rand() % 26 + 65);
 	}
-	id = get_sha1(msg);
+	id = get_sha1(key_name);
 	warn << "Message: " << msg.c_str() << "\n";
-	warn << "Id: " << id.toString().c_str() << "\n";
+	warn << "Key Id: " << id.toString().c_str() << "\n";
 
 	it = ring.lower_bound(id);
 	if(it == ring.end())
@@ -127,12 +146,13 @@ connect_to_manager(str h, int port) {
 	x = axprt_stream::alloc(fd);
 	cli = aclnt::alloc(x, chain_node_1);
 
+	wrt_arg.chain = id.get_rpc_id();
 	wrt_arg.id = id.get_rpc_id();
 	wrt_arg.data = msg.c_str();
 	twait { cli->call(HEAD_WRITE, &wrt_arg, &wrt_ret, mkevent(e)); }
 	assert_msg(!e && wrt_ret, "Writing value...");
 
-	for(j=0; j<CHAIN_SIZE; j++) {
+	/*for(j=0; j<CHAIN_SIZE; j++) {
 
 		twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
 		assert_msg(fd>=0, "Connecting to read node...");

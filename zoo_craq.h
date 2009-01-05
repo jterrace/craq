@@ -31,7 +31,7 @@ extern void czoo_fdcb_write_timeout(int fd);
 extern void czoo_fdcb_write(int fd);
 
 extern ptr<callback<void, bool> > init_cb;
-extern void czoo_init(const char * host, ptr<callback<void, bool> > cb, CLOSURE);
+extern void czoo_init(const char * host, ptr<callback<void, bool> > cb, ZooLogLevel log_level = ZOO_LOG_LEVEL_INFO, CLOSURE);
 
 extern map<int, ptr<callback<void, int> > > czoo_create_cbs;
 extern void czoo_create( string path, string value, const struct ACL_vector *acl,
