@@ -884,9 +884,9 @@ tamed void process_ack(svccb * sbp) {
 		 << kit->second.committed << "/" << kit->second.max_pending << "\n";
 
 	sbp->replyref(true);
-	if(!kit->second.is_head) {
+	//if(!kit->second.is_head) {
 		twait { ack(chain_id, id, mkevent(ret_val)); }
-	}
+	//}
 
 }
 
