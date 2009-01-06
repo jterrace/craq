@@ -1,6 +1,7 @@
 #include <map>
 #include <deque>
 #include <ctime>
+#include <vector>
 #include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
@@ -11,19 +12,23 @@
 #include "../Node.h"
 #include "../ID_Value.h"
 #include "../connection_pool.H"
+#include <tclap/CmdLine.h>
+#include "../zoo_craq.h"
 
 using namespace CryptoPP;
 using namespace std;
 
-const unsigned int CHAIN_SIZE = 3;
 int NUM_SECS;
-unsigned int WINDOW_SIZE;
+unsigned int MSGS_PER_SEC;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
-bool CRAQ;
-bool DO_DIRTY;
+vector<string> DATA_CENTERS;
+string CHAIN_NAME;
+string KEY_NAME;
+unsigned int CHAIN_SIZE;
 
 struct key_value {
+	ID_Value chain_id;
 	ID_Value id;
 	blob msg;
 	Node head;
@@ -31,79 +36,50 @@ struct key_value {
 	map<ID_Value, Node>::iterator head_it;
 };
 
-struct time_and_type {
-	timeval t;
-	bool read;
-	int key;
-	bool dirty;
-};
 map<ID_Value, Node> ring;
 
-double time_diff( timeval first, timeval second ) {
-	double sec_diff = second.tv_sec - first.tv_sec;
-	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
-	return sec_diff;
-}
-
-tamed static void read_it(key_value * to_send, time_and_type * this_one, cbb cb) {
+tamed static void read_it(key_value * to_send) {
 	tvars {
-		int fd, fd2, i, rnd;
+		int fd, fd2, i;
 		ptr<axprt_stream> x;
 		ptr<aclnt> cli;
 		clnt_stat e;
 		rpc_node node;
 		u_int put_ret;
-		tail_read_ex_ret ret;
-		tail_read_ex_arg ex_arg;
-		map<ID_Value, Node>::iterator it;
+		timeval started;
+		timeval cur_time;
+		long sec_diff;
+		long usec_diff;
+		rpc_hash arg;
+		blob ret;
 	}
 
-	if(CRAQ) {
-		it = to_send->head_it;
-		rnd = rand() % CHAIN_SIZE;
-		for(i=0; i<rnd; i++) {
-			it++;
-			if(it == ring.end()) it = ring.begin();
-		}
-
-		twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-		if(fd < 0) {
-			(*cb)(false);
-			return;
-		}
-		ex_arg.id = to_send->id.get_rpc_id();
-		ex_arg.dirty = DO_DIRTY;
-		twait {	cli->call(TAIL_READ_EX, &ex_arg, &ret,  mkevent(e)); }
-		if(e) {
-			invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
-			(*cb)(false);
-			return;
-		}
-		if(ret.data.size() != to_send->msg.size()) {
-			(*cb)(false);
-			return;
-		}
-		this_one->dirty = ret.dirty;
-		(*cb)(true);
+	gettimeofday(&started, NULL);
+	twait { get_rpc_cli (to_send->head.getIp().c_str(),to_send->head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	if(fd < 0) {
 		return;
+	}
+	arg = to_send->id.get_rpc_id();
+	twait {	cli->call(TAIL_READ, &arg, &ret,  mkevent(e)); }
+	if(e || ret.size() != MESSAGE_SIZE) {
+		fatal << "Read failed!\n";
+		return;
+	}
+
+	gettimeofday(&cur_time, NULL);
+	warn << "R\t";
+	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
+	sec_diff = cur_time.tv_sec - started.tv_sec;
+	if(sec_diff == 0) {
+		usec_diff = cur_time.tv_usec - started.tv_usec;
 	} else {
-		twait { get_rpc_cli (to_send->tail.getIp().c_str(),to_send->tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-		if(fd < 0) {
-			(*cb)(false);
-			return;
-		}
-		ex_arg.id = to_send->id.get_rpc_id();
-		ex_arg.dirty = false;
-		twait {	cli->call(TAIL_READ_EX, &ex_arg, &ret,  mkevent(e)); }
-		if(e || ret.data.size() != to_send->msg.size()) {
-			(*cb)(false);
-			return;
-		}
-		this_one->dirty = false;
-		(*cb)(true);
-		return;
+		usec_diff = (1000000 - started.tv_usec) + cur_time.tv_usec;
+		sec_diff--;
+		sec_diff += (usec_diff / 1000000);
+		usec_diff = usec_diff % 1000000;
 	}
-
+	warn << sec_diff << "\t" << usec_diff << "\n";
+	return;
 
 }
 
@@ -125,6 +101,12 @@ ID_Value get_sha1(blob msg)
 	SHA().CalculateDigest(buffer, data, msg.size());
 	ID_Value ret(buffer);
  	return ret;
+}
+
+double time_diff( timeval first, timeval second ) {
+	double sec_diff = second.tv_sec - first.tv_sec;
+	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
+	return sec_diff;
 }
 
 tamed static void
@@ -155,72 +137,106 @@ connect_to_manager(str h, int port) {
 		ostringstream ss, sss;
 		int num_data;
 		double sum_data;
-		time_and_type * req_start;
 		long sec_diff;
 		long usec_diff;
+		u_int wait_time;
+		vector<string> * node_list;
+		vector<string *> node_vals;
+		string find;
+		string search;
+		string * found;
+		add_chain_arg arg;
+		add_chain_ret add_ret;
+		bool rc;
+		Node new_node;
+	}
+
+	srand ( time(NULL) );
+
+	//warn << "chain id: " << get_sha1(KEY_NAME).toString().c_str() << "\n";
+
+	ss << h << ":" << port;
+	twait { czoo_init( ss.str().c_str(), mkevent(rc), ZOO_LOG_LEVEL_ERROR); }
+	if(!rc) {
+		fatal << "init failed!\n";
+	}
+
+	twait { czoo_get_children("/nodes/" + DATA_CENTERS[0], NULL, mkevent(node_list)); }
+	if(node_list == NULL) {
+		fatal << "retrieving node list failed!n";
+	}
+
+	node_vals.resize((*node_list).size());
+	twait {
+		for(i=0; i<(*node_list).size(); i++) {
+			find = (*node_list)[i];
+			search = "/nodes/" + DATA_CENTERS[0] + "/" + find;
+			czoo_get(search, mkevent(node_vals[i]));
+		}
+	}
+	//warn << "Checking node list return values... ";
+	for(i=0; i<node_vals.size(); i++) {
+		if(node_vals[i] == NULL) {
+			fatal << "FAIL!\n";
+		}
+		new_node.set_from_string(*node_vals[i]);
+		ring[new_node.getId()] = new_node;
+		delete node_vals[i];
+	}
+	delete node_list;
+	//warn << "SUCCESS\n";
+
+	srand(9);
+	keys.resize(1);
+	i = 0;
+	keys[i].msg.setsize(MESSAGE_SIZE);
+	for(j=0; j<MESSAGE_SIZE; j++) {
+		keys[i].msg[j] = rand() % 256;
+	}
+	keys[i].id = get_sha1(KEY_NAME);
+	keys[i].chain_id = get_sha1(CHAIN_NAME);
+	it = ring.lower_bound(keys[i].id);
+	if(it == ring.end()) it = ring.begin();
+	keys[i].head = it->second;
+	keys[i].head_it = it;
+	for(j=0; j<CHAIN_SIZE-1; j++) {
+		it++;
+		if(it == ring.end()) it = ring.begin();
+	}
+	keys[i].tail = it->second;
+
+	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
+	if(fd < 0 ) {
+		fatal << "Error connecting to node to add chain\n";
+	}
+	x = axprt_stream::alloc(fd);
+	cli = aclnt::alloc(x, chain_node_1);
+	arg.id = get_sha1(CHAIN_NAME).get_rpc_id();
+	arg.chain_size = CHAIN_SIZE;
+	arg.data_centers.setsize(DATA_CENTERS.size());
+	for(i=0; i<DATA_CENTERS.size(); i++) {
+		arg.data_centers[i] = DATA_CENTERS[i].c_str();
+	}
+
+	twait { cli->call(ADD_CHAIN, &arg, &add_ret, mkevent(e)); }
+	if(e || add_ret == ADD_CHAIN_FAILURE) {
+		fatal << "Error adding chain!\n";
+	}
+
+	twait { get_rpc_cli (keys[0].head.getIp().c_str(),keys[0].head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	if(fd < 0) {
+		return;
+	}
+	wrt_arg.chain = keys[0].chain_id.get_rpc_id();
+	wrt_arg.id =  keys[0].id.get_rpc_id();
+	wrt_arg.data =  keys[0].msg;
+	twait {	cli->call(HEAD_WRITE, &arg, &rc,  mkevent(e)); }
+	if(e || !rc) {
+		fatal << "Initial write failed!\n";
+		return;
 	}
 
 	gettimeofday(&cur_time, NULL);
-	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
-	twait { tcpconnect (h, port, mkevent(fd)); }
-	if(fd < 0) {
-		fatal << "Couldn't connect to manager.\n";
-	}
-	//warn << " DONE\n";
-
-	x = axprt_stream::alloc(fd);
-	cli = aclnt::alloc(x, rpc_manager_1);
-
-	//warn << "Getting node list...\n";
-	twait { cli->call(GET_NODE_LIST, NULL, &cur_list, mkevent(e)); }
-	if(e || cur_list.nodes.size() < CHAIN_SIZE) {
-		fatal << "Invalid node list!\n";
-	}
-	//warn << " DONE\n";
-
-	for(i=0; i<cur_list.nodes.size(); i++) {
-		ret.set_from_rpc_node(cur_list.nodes[i]);
-		ring[ret.getId()] = ret;
-	}
-
-	//warn << "Generating " << NUM_MESSAGES << " messages of size "
-	//	 << MESSAGE_SIZE << "...\n";
-	srand(9);
-	keys.resize(NUM_MESSAGES);
-	for(i=0; i<NUM_MESSAGES; i++) {
-		keys[i].msg.setsize(MESSAGE_SIZE);
-		for(j=0; j<MESSAGE_SIZE; j++) {
-			keys[i].msg[j] = rand() % 256;
-		}
-		keys[i].id = get_sha1(keys[i].msg);
-		it = ring.lower_bound(keys[i].id);
-		if(it == ring.end()) it = ring.begin();
-		keys[i].head = it->second;
-		keys[i].head_it = it;
-		for(j=0; j<CHAIN_SIZE-1; j++) {
-			it++;
-			if(it == ring.end()) it = ring.begin();
-		}
-		keys[i].tail = it->second;
-	}
-	//warn << " DONE\n";
-
-	//warn << "Writing initial messages...\n";
-	for(i=0; i<NUM_MESSAGES; i++) {
-		twait { get_rpc_cli (keys[i].head.getIp().c_str(),keys[i].head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-		if(fd < 0) {
-			fatal << "Couldn't connect to a node to write key!\n";
-		}
-		wrt_arg.id = keys[i].id.get_rpc_id();
-		wrt_arg.data = keys[i].msg;
-		twait {	cli->call(HEAD_WRITE, &wrt_arg, &wrt_ret,  mkevent(e)); }
-		if(!wrt_ret) {
-			fatal << "Error writing key to node\n";
-		}
-	}
-	//warn << " DONE\n";
-
-	//gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
 
@@ -230,77 +246,25 @@ connect_to_manager(str h, int port) {
 	k = 0;
 	nsent = 0;
 	nrecv = 0;
-	window_sz = WINDOW_SIZE;
 
-	gettimeofday(&cur_time, NULL);
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	srand(time(NULL));
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
+	wait_time = 1000000000 / MSGS_PER_SEC;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
 		gettimeofday(&cur_time, NULL);
-		if((nsent-nrecv) < window_sz) {
-			// Launch new calls since there is room in the window!
-			res = New refcounted<bool> ();
-			//warn << "Reading key " << i << "\n";
-			req_start = new time_and_type;
-			gettimeofday(&(req_start->t), NULL);
-			req_start->key = i;
-			//read_it(&keys[i], req_start, mkevent(rv, (u_int)req_start, res, *res));
-			nsent++;
-			i++;
-			if(i > NUM_MESSAGES-1) {
-				i = 0;
-			}
-		} else {
-			// Harvest
-			twait(rv, k, res);
-			gettimeofday(&cur_time, NULL);
-			req_start = (time_and_type *)k;
-			if(*res) {
-				nrecv++;
-				//k++;
-				warn << (req_start->dirty ? "D" : "C") << "\t";
-				warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
-				sec_diff = cur_time.tv_sec - req_start->t.tv_sec;
-				if(sec_diff == 0) {
-					usec_diff = cur_time.tv_usec - req_start->t.tv_usec;
-				} else {
-					usec_diff = (1000000 - req_start->t.tv_usec) + cur_time.tv_usec;
-					sec_diff--;
-					sec_diff += (usec_diff / 1000000);
-					usec_diff = usec_diff % 1000000;
-				}
-				warn << sec_diff << "\t" << usec_diff << "\n";
-
-				delete req_start;
-
-			} else {
-
-				//retry
-				//warn << "retrying\n";
-				res = New refcounted<bool> ();
-				//read_it(&keys[req_start->key], req_start, mkevent(rv, (unsigned long)req_start, res, *res));
-			}
-		}
-		/*gettimeofday(&cur_time, NULL);
-		if( time_diff(last_time, cur_time) >= 1.0 ) {
-			num_data++;
-			ss.str("");
-			ss << time_diff(last_time, cur_time);
-			persec = (double)k / time_diff(last_time, cur_time);
-			sum_data += (double)k / time_diff(last_time, cur_time);
-			sss.str("");
-			sss << persec;
-			warn <<  ss.str().c_str() << " elapsed, " << k << " replies = " << sss.str().c_str() << " replies/second\n";
-			k = 0;
-			last_time = cur_time;
+		read_it(&keys[i]);
+		/*i++;
+		if(i > NUM_MESSAGES-1) {
+			i = 0;
 		}*/
+		twait{ delaycb(0, wait_time, mkevent()); }
 	}
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
-	//warn << "Average: " << ss.str().c_str() << " replies/second\n";
+	//warn << "Average: " << ss.str().c_str() << " replies/second\n";*/
 
 	exit(0);
 
@@ -309,45 +273,41 @@ connect_to_manager(str h, int port) {
 tamed static
 void main2(int argc, char **argv) {
 	tvars {
-		str manager_hostname;
+		string manager_hostname;
 		int manager_port;
-		str craq;
-		str do_dirty;
-		int i;
 	}
 
-	if(argc > 7) {
-		craq = argv[7];
+	try
+	{
+		TCLAP::CmdLine cmd("reader creates a chain, and writes a key over and over", ' ', "0.1");
+		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
+		TCLAP::ValueArg<int> managerPort("r", "manager_port", "Manager port number", true, 0, "int", cmd);
+		TCLAP::MultiArg<string> dataCenters("d", "data_centers", "Data centers to spread the key to", true, "string", cmd );
+		TCLAP::ValueArg<string> chainName("a", "chain_name", "Identifier for chain (will be converted with SHA256)", true, "", "string", cmd);
+		TCLAP::ValueArg<string> keyName("k", "key_name", "Identifier for key (will be converted with SHA256)", true, "", "string", cmd);
+		TCLAP::ValueArg<int> keySize("s", "key_size", "Size of key data to generate", true, 0, "int", cmd);
+		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chains within data centers", true, 0, "int", cmd);
+		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
+		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read", true, 0, "int", cmd);
+		cmd.parse(argc, argv);
+
+		manager_hostname = managerHost.getValue();
+		manager_port = managerPort.getValue();
+		DATA_CENTERS = dataCenters.getValue();
+		CHAIN_NAME = chainName.getValue();
+		KEY_NAME = keyName.getValue();
+		MESSAGE_SIZE = keySize.getValue();
+		CHAIN_SIZE = chainSize.getValue();
+		NUM_SECS = numSecs.getValue();
+		MSGS_PER_SEC = msgsPerSec.getValue();
+
+		connect_to_manager(manager_hostname.c_str(), manager_port);
 	}
-	if(argc > 8) {
-		do_dirty = argv[8];
+	catch (TCLAP::ArgException &e)  // catch any exceptions
+	{
+		fatal << "error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
 	}
 
-	if (argc == 9 && convertint(argv[2], &manager_port) &&
-		convertint(argv[3], &NUM_SECS) &&
-		convertint(argv[4], &WINDOW_SIZE) &&
-		convertint(argv[5], &MESSAGE_SIZE) &&
-		convertint(argv[6], &NUM_MESSAGES) &&
-		(craq=="CRAQ" || craq=="CR") &&
-		(do_dirty=="Y" || do_dirty=="N") ) {
-	 	manager_hostname = argv[1];
-	 	if(craq == "CRAQ") {
-	 		CRAQ = true;
-	 	} else {
-	 		CRAQ = false;
-	 	}
-	 	if(do_dirty == "Y") {
-	 		DO_DIRTY = true;
-	 	} else {
-	 		DO_DIRTY = false;
-	 	}
-		connect_to_manager(manager_hostname, manager_port);
-	}
-	else {
-		fatal << "usage: BROKEN <manager_hostname> <manager_port> <num_secs>\n"
-			  << "             <window_size> <message_size> <num_messages> <craq_bool> <craq_dirty>\n";
-		exit(1);
-	}
 }
 
 int main (int argc, char *argv[]) {
