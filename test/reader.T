@@ -223,12 +223,12 @@ connect_to_manager(str h, int port) {
 		fatal << "Error adding chain!\n";
 	}
 
-	twait { get_rpc_cli (keys[0].head.getIp().c_str(),keys[0].head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	twait { get_rpc_cli (it->second.getIp().c_str(),it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
 		return;
 	}
-	wrt_arg.chain = keys[0].chain_id.get_rpc_id();
-	wrt_arg.id =  keys[0].id.get_rpc_id();
+	wrt_arg.chain = get_sha1(CHAIN_NAME).get_rpc_id();
+	wrt_arg.id =  get_sha1(KEY_NAME).get_rpc_id();
 	wrt_arg.data =  keys[0].msg;
 	twait {	cli->call(HEAD_WRITE, &arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
