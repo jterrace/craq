@@ -824,6 +824,7 @@ tamed void process_ack(svccb * sbp) {
 	tvars {
 		ack_arg parg;
 		ID_Value id;
+		ID_Value chain_id;
 		key_iter kit;
 		map<int, blob>::iterator pendit;
 		map<int, deque<svccb *> >::iterator it;
@@ -834,6 +835,7 @@ tamed void process_ack(svccb * sbp) {
 	parg = *(sbp->getarg<ack_arg>());
 	if(BUG) warn << "Got ACK Request\n";
 
+	chain_id.set_from_rpc(parg.chain);
 	id.set_from_rpc(parg.id);
 
 	kit = key_meta_list.find(id);
@@ -883,7 +885,7 @@ tamed void process_ack(svccb * sbp) {
 
 	sbp->replyref(true);
 	if(!kit->second.is_head) {
-		//TODO: twait { ack(id, mkevent(ret_val)); }
+		twait { ack(chain_id, id, mkevent(ret_val)); }
 	}
 
 }
@@ -1170,6 +1172,7 @@ tamed void ack(ID_Value chain_id, ID_Value id, cbb cb) {
 			pred = predi->second;
 		}
 
+		arg.chain = chain_id.get_rpc_id();
 		arg.id = id.get_rpc_id();
 		arg.ver = it->second.committed;
 
