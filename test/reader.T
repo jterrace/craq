@@ -64,7 +64,7 @@ tamed static void read_it(key_value * to_send) {
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e || ret.data.size() != MESSAGE_SIZE) {
-		fatal << "Read failed!\n";
+		//fatal << "Read failed!\n";
 		return;
 	}
 
@@ -240,11 +240,11 @@ connect_to_manager(str h, int port) {
 	if(e || !rc) {
 		//fatal << "Initial write failed!\n";
 	}
-	
+
 	gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
-	
+
 	num_data = 0;
 	sum_data = 0.0;
 	i = 0;
