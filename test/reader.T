@@ -50,8 +50,8 @@ tamed static void read_it(key_value * to_send) {
 		timeval cur_time;
 		long sec_diff;
 		long usec_diff;
-		rpc_hash arg;
-		blob ret;
+		tail_read_ex_arg arg;
+		tail_read_ex_ret ret;
 	}
 
 	gettimeofday(&started, NULL);
@@ -59,15 +59,21 @@ tamed static void read_it(key_value * to_send) {
 	if(fd < 0) {
 		return;
 	}
-	arg = to_send->id.get_rpc_id();
-	twait {	cli->call(TAIL_READ, &arg, &ret,  mkevent(e)); }
-	if(e || ret.size() != MESSAGE_SIZE) {
+	arg.id = to_send->id.get_rpc_id();
+	arg.chain = to_send->chain_id.get_rpc_id();
+	arg.dirty = false;
+	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
+	if(e || ret.data.size() != MESSAGE_SIZE) {
 		fatal << "Read failed!\n";
 		return;
 	}
 
 	gettimeofday(&cur_time, NULL);
-	warn << "R\t";
+	if(ret.dirty) {
+		warn << "D\t";
+	} else {
+		warn << "R\t";
+	}
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
 	sec_diff = cur_time.tv_sec - started.tv_sec;
 	if(sec_diff == 0) {
@@ -232,14 +238,13 @@ connect_to_manager(str h, int port) {
 	wrt_arg.data =  keys[0].msg;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
-		fatal << "Initial write failed!\n";
-		return;
+		//fatal << "Initial write failed!\n";
 	}
-
+	
 	gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
-
+	
 	num_data = 0;
 	sum_data = 0.0;
 	i = 0;

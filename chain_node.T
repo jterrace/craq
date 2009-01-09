@@ -21,7 +21,7 @@
 #include "zoo_craq.H"
 #include <tclap/CmdLine.h>
 
-#define BUG 1
+#define BUG 0
 
 
 using namespace CryptoPP;
@@ -80,6 +80,7 @@ static void node_deleted(Node node_changed, CLOSURE);
 static void ext_ring_ptr(chain_meta chain, string dc, ptr<callback<void, ptr<map<string, map<ID_Value, Node> >::iterator > > > cb, CLOSURE);
 static void ext_ring_succ(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb, CLOSURE);
 static void ext_ring_pred(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb, CLOSURE);
+static void ext_ring_tail(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb, CLOSURE);
 
 ring_iter ring_succ(ID_Value id);
 void ring_incr(ring_iter * it);
@@ -335,6 +336,38 @@ tamed void ext_ring_pred(chain_meta chain, ID_Value id, ptr<callback<void, ptr<N
 	TRIGGER(cb, ret);
 }
 
+tamed void ext_ring_tail(chain_meta chain, ID_Value id, ptr<callback<void, ptr<Node> > > cb) {
+	tvars {
+		ptr<map<string, map<ID_Value, Node> >::iterator> val;
+		map<ID_Value, Node>::iterator it;
+		ptr<Node> ret;
+		u_int i;
+		string dc_find;
+	}
+
+	dc_find = chain.data_centers[chain.data_centers.size()-1];
+
+	twait { ext_ring_ptr(chain, dc_find, mkevent(val)); }
+	if(val == NULL) {
+		TRIGGER(cb, NULL);
+		return;
+	}
+
+	it = (*val)->second.lower_bound(id);
+	if(it == (*val)->second.end())
+		it = (*val)->second.begin();
+
+	for(i=0; i<chain.chain_size-1; i++) {
+		it++;
+		if(it == (*val)->second.end())
+			it = (*val)->second.begin();
+	}
+
+	ret = New refcounted<Node>;
+	*ret = it->second;
+	TRIGGER(cb, ret);
+}
+
 tamed void process_query_obj_ver(svccb * sbp) {
 	tvars {
 		rpc_hash parg;
@@ -471,6 +504,11 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		query_obj_ver_ret ret;
 		map<int, blob>::iterator kit;
 		tail_read_ex_ret to_rep;
+		ID_Value chain_id;
+		ptr<chain_meta> chain_info;
+		Node tail;
+		ptr<Node> ext_tail;
+		rpc_hash qry_id;
 	}
 
 	parg = *(sbp->getarg<tail_read_ex_arg>());
@@ -490,30 +528,49 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		}
 
 		if(!parg.dirty && it->second.committed == it->second.max_pending) {
-			if(BUG>=2) warn << "Clean READ " << id.toString().c_str() << "\n";
+			if(BUG) warn << "Clean READ " << id.toString().c_str() << "\n";
 			repl = storage->get(id);
 			to_rep.data = *repl;
 			to_rep.dirty = false;
 			sbp->replyref(to_rep);
 			return;
 		} else {
-			if(BUG>=2) warn << "Dirty READ " << id.toString().c_str() << "\n";
+			if(BUG) warn << "Dirty READ " << id.toString().c_str() << "\n";
+
+			//lookup chain
+			chain_id.set_from_rpc(parg.chain);
+			twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+			if(chain_info == NULL) {
+				fatal << "Couldn't get chain info in read!\n";
+				sbp->replyref(false);
+				return;
+			}
 
 			//Find tail
-			rit = ring_succ(id);
-			for(i=0; i<CHAIN_SIZE-1; i++)
-				ring_incr(&rit);
+			if(chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
+				rit = ring_succ(id);
+				for(i=0; i<CHAIN_SIZE-1; i++)
+					ring_incr(&rit);
+				tail = rit->second;
+			} else {
+				twait { ext_ring_tail(*chain_info, id, mkevent(ext_tail)); }
+				if(ext_tail == NULL) {
+					fatal << "Error when trying to retrieve external tail!\n";
+				}
+				tail = *ext_tail;
+			}
 
-			twait { get_rpc_cli (rit->second.getIp().c_str(), rit->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+			twait { get_rpc_cli (tail.getIp().c_str(), tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 
 			if( fd<0 ) {
-				report_bad_node(rit->second);
+				report_bad_node(tail);
 				sbp->replyref(NULL);
 				return;
 			}
 
 			//Query tail
-			twait {	cli->call(QUERY_OBJ_VER, &parg, &ret,  mkevent(e)); }
+			qry_id = id.get_rpc_id();
+			twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
 
 			if(e) {
 				report_bad_node(rit->second);
