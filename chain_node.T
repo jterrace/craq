@@ -509,6 +509,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		Node tail;
 		ptr<Node> ext_tail;
 		rpc_hash qry_id;
+		timeval started;
+		timeval cur_time;
+		long sec_diff;
+		long usec_diff;
 	}
 
 	parg = *(sbp->getarg<tail_read_ex_arg>());
@@ -570,7 +574,19 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 			//Query tail
 			qry_id = id.get_rpc_id();
+			gettimeofday(&started, NULL);
 			twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
+			gettimeofday(&cur_time, NULL);
+			sec_diff = cur_time.tv_sec - started.tv_sec;
+			if(sec_diff == 0) {
+				usec_diff = cur_time.tv_usec - started.tv_usec;
+			} else {
+				usec_diff = (1000000 - started.tv_usec) + cur_time.tv_usec;
+				sec_diff--;
+				sec_diff += (usec_diff / 1000000);
+				usec_diff = usec_diff % 1000000;
+			}
+			warn << sec_diff << "\t" << usec_diff << "\n";
 
 			if(e) {
 				report_bad_node(rit->second);
