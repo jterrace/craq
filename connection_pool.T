@@ -64,7 +64,7 @@ get_rpc_cli( const char * host, unsigned int port,
 	}
 
 	//insert real one
-	to_ins.x = axprt_dgram::alloc(fd);
+	to_ins.x = axprt_stream::alloc(fd);
 	to_ins.cli = aclnt::alloc(to_ins.x, *prog);
 	to_ins.fd = fd;
 	conn_pool[cur_pool].push_back(to_ins);

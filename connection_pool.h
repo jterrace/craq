@@ -18,7 +18,7 @@ struct conn_info {
 	unsigned int port;
 	int fd;
 	const rpc_program * prog;
-	ptr<axprt_dgram> x;
+	ptr<axprt_stream> x;
 	ptr<aclnt> cli;
 };
 
