@@ -65,6 +65,7 @@ tamed static void read_it(key_value * to_send) {
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e || ret.data.size() != MESSAGE_SIZE) {
 		//fatal << "Read failed!\n";
+		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
 		return;
 	}
 
