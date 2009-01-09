@@ -2,8 +2,8 @@
 /usr/local/lib/sfslite/rpcc -c -o ex_prot.c ex_prot.x
 /usr/local/lib/sfslite/tame -o exsrv.C exsrv.T
 /usr/local/lib/sfslite/tame -o ex3.C ex3.T
-g++ -I/usr/local/include/sfslite -c ex_prot.c
-g++ -I/usr/local/include/sfslite -c ex3.C
-g++ -I/usr/local/include/sfslite -c exsrv.C
-g++ -I/usr/local/include/sfslite -o ex3 ex3.o ex_prot.o /usr/local/lib/sfslite/libtame.a /usr/local/lib/sfslite/libsfscrypt.a /usr/local/lib/sfslite/libarpc.a /usr/local/lib/sfslite/libasync.a -lresolv -ldl
-g++ -I/usr/local/include/sfslite -o exsrv exsrv.o ex_prot.o /usr/local/lib/sfslite/libtame.a /usr/local/lib/sfslite/libsfscrypt.a /usr/local/lib/sfslite/libarpc.a /usr/local/lib/sfslite/libasync.a -lresolv -ldl
+g++ -static -I/usr/local/include/sfslite -c ex_prot.c
+g++ -static -I/usr/local/include/sfslite -c ex3.C
+g++ -static -I/usr/local/include/sfslite -c exsrv.C
+g++ -static -I/usr/local/include/sfslite -o ex3 ex3.o ex_prot.o /usr/local/lib/sfslite/libtame.a /usr/local/lib/sfslite/libsfscrypt.a /usr/local/lib/sfslite/libarpc.a /usr/local/lib/sfslite/libasync.a -lresolv -ldl
+g++ -static -I/usr/local/include/sfslite -o exsrv exsrv.o ex_prot.o /usr/local/lib/sfslite/libtame.a /usr/local/lib/sfslite/libsfscrypt.a /usr/local/lib/sfslite/libarpc.a /usr/local/lib/sfslite/libasync.a -lresolv -ldl
