@@ -596,8 +596,11 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				//See if we have the version the tail would return
 				kit = it->second.pending_list.find(ret.hist);
 				if(kit == it->second.pending_list.end()) {
-					sbp->replyref(NULL);
-					return;
+					kit = it->second.pending_list.find(it->second.max_pending); //really wrong
+					if(kit == it->second.pending_list.end()) {
+						sbp->replyref(NULL);
+						return;
+					}
 				}
 				//Return tail's committed version
 				to_rep.data = kit->second;
