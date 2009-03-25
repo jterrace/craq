@@ -35,7 +35,8 @@ all: manager \
 	test/multi_read_write \
 	test/writer \
 	test/reader \
-	test/single_reader
+	test/single_reader \
+	client/client
 
 
 craq_rpc.o: craq_rpc.x
@@ -100,6 +101,11 @@ test/single_reader: test/single_reader.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_reader.o -c test/single_reader.C
 	$(CC) $(CFLAGS) -o test/single_reader test/single_reader.o $(OBJS) $(LIBS)
 	
+client/client: client/client.T $(OBJS)
+	$(TAME) -o client/client.C client/client.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o client/client.o -c client/client.C
+	$(CC) $(CFLAGS) -o client/client client/client.o $(OBJS) $(LIBS)
+	
 clean:
 	rm -f chain_node chain_node.C\
 		manager manager.C \
@@ -112,4 +118,5 @@ clean:
 		test/writer.C test/writer \
 		test/reader.C test/reader \
 		test/single_reader.C test/single_reader \
+		client/client client/client.C client/client.o \
 		*.o test/*.o

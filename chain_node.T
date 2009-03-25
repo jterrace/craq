@@ -1790,7 +1790,7 @@ void main2(int argc, char **argv) {
 
 	try
 	{
-		TCLAP::CmdLine cmd("Command description message", ' ', "0.1");
+		TCLAP::CmdLine cmd("chain_node starts up a single chain node in CRAQ", ' ', "0.2");
 		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
 		TCLAP::ValueArg<int> managerPort("r", "manager_port", "Manager port number", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> listenPort("p", "listen_port", "Port to listen for connections", true, 0, "int", cmd);
