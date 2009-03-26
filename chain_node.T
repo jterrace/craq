@@ -1732,24 +1732,28 @@ register_to_manager(int my_port, str h, int port) {
 
 	twait { czoo_create( "/nodes", "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
 	if( !(ret == ZOK || ret == ZNODEEXISTS) ) {
-		fatal << "Error when trying to create root node!\n";
+		fatal << "Error(" << ret << ") when trying to create root node!\n";
 	}
 
 	twait { czoo_create( "/keys", "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
 	if(!(ret == ZOK || ret == ZNODEEXISTS)) {
-		fatal << "Error when trying to create keys node!\n";
+		fatal << "Error(" << ret << ") when trying to create keys node!\n";
 	}
 
 	twait { czoo_create( "/nodes/" + datacenter, "", &ZOO_OPEN_ACL_UNSAFE, 0, mkevent(ret)); }
 	if(!(ret == ZOK || ret == ZNODEEXISTS)) {
-		fatal << "Error when trying to create root data center node!\n";
+		fatal << "Error(" << ret << ") when trying to create root data center node!\n";
 	}
 
-	twait { czoo_create( "/nodes/" + datacenter + "/", my_node_str, &ZOO_OPEN_ACL_UNSAFE,
+	twait { czoo_create( "/nodes/" + datacenter + "/node", my_node_str, &ZOO_OPEN_ACL_UNSAFE,
 							ZOO_EPHEMERAL | ZOO_SEQUENCE, mkevent(ret)); }
 	if(!(ret == ZOK)) {
-		fatal << "Error when trying to create my node!\n";
+		fatal << "Error(" << ret << ") when trying to create my node!\n";
 	}
+
+	//warn << "sleeping " << ret << "\n";
+	//delay(5000);
+	//warn << "done sleeping\n";
 
 	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
 	if(node_list == NULL) {
@@ -1757,6 +1761,7 @@ register_to_manager(int my_port, str h, int port) {
 	}
 	zoo_node_count = (*node_list).size();
 	node_vals.resize((*node_list).size());
+	//warn << "size " << (*node_list).size() << "\n";
 	twait {
 		for(i=0; i<(*node_list).size(); i++) {
 			find = (*node_list)[i];

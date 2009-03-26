@@ -172,6 +172,8 @@ void czoo_created(int rc, const char *name, const void *data) {
     if ( !(rc==ZOK || rc==ZNODEEXISTS) ) {
         status = false;
     }*/
+	//warn << "rc " << rc << "\n";
+	//warn << "created " << (name==NULL ? "NULL" : name) << "\n";
     map<int, ptr<callback<void, int> > >::iterator it = czoo_create_cbs.find(*where);
     if(it != czoo_create_cbs.end()) {
     	TRIGGER( it->second, rc);
@@ -192,11 +194,17 @@ czoo_create( string path, string value, const struct ACL_vector *acl, int flags,
     	*where = it->first + 1;
     }
 	czoo_create_cbs[*where] = cb;
+	//warn << "path " << path.c_str() << "\n";
+	//warn << "value " << value.c_str() << "\n";
+	//warn << "len " << value.length() << "\n";
+	//warn << "acl " << acl << "\n";
+	//warn << "flags " << flags << "\n";
+
     int rc = zoo_acreate(zh, path.c_str(), value.c_str(), value.length(),
     		acl, flags, &czoo_created, where);
     if(rc) {
     	czoo_create_cbs.erase(*where);
-    	TRIGGER( cb, false );
+    	TRIGGER( cb, rc );
     	delete where;
     }
 }
