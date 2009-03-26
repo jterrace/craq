@@ -373,9 +373,9 @@ tamed static void listen_loop(int lport) {
 	tvars {
 		int lsock, rc, nfd;
 		rendezvous_t<ev_t> G (__FILE__, __LINE__);
-	    ev_t which;
-	    sockaddr_in sin;
-	    socklen_t sinlen (sizeof (sin));
+		ev_t which;
+		sockaddr_in sin;
+		socklen_t sinlen (sizeof (sin));
 	}
 
 	lsock = listen_on(lport);
@@ -440,10 +440,10 @@ tamed static void node_list_watcher(string path) {
 		Node new_node;
 	}
 
-    if(!ring_init) {
+	if(!ring_init) {
     	//TODO: Fix this
     	fatal << "Updated node list while doing initial list. Not implemented.\n";
-    }
+	}
 
 	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(ret_node_list)); }
 	if(ret_node_list == NULL) {
@@ -482,7 +482,7 @@ tamed static void node_list_watcher(string path) {
 	for( i=0, it = to_add.begin(); it != to_add.end(); i++, it++ ) {
 		search = "/nodes/" + datacenter + "/" + (*it);
 		add_ids[i] = *it;
-        czoo_get(search, mkevent(rv, i, add_rets[i]));
+		czoo_get(search, mkevent(rv, i, add_rets[i]));
 	}
 	for(i=0; i<add_rets.size(); i++) {
 		twait(rv, j);
