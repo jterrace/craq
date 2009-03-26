@@ -21,7 +21,7 @@
 #include "zoo_craq.H"
 #include <tclap/CmdLine.h>
 
-#define BUG 0
+#define BUG 1
 
 
 using namespace CryptoPP;
@@ -405,6 +405,8 @@ tamed void process_tail_read(svccb * sbp) {
 		query_obj_ver_ret ret;
 		map<int, blob>::iterator kit;
 		blob to_rep;
+		ID_Value chain_id;
+		ptr<chain_meta> chain_info;
 	}
 
 	parg = *(sbp->getarg<rpc_hash>());
@@ -553,7 +555,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			//Find tail
 			if(chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
 				rit = ring_succ(id);
-				for(i=0; i<CHAIN_SIZE-1; i++)
+				for(i=0; i<chain_info->chain_size-1; i++)
 					ring_incr(&rit);
 				tail = rit->second;
 			} else {
@@ -574,9 +576,9 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 			//Query tail
 			qry_id = id.get_rpc_id();
-			gettimeofday(&started, NULL);
+			//gettimeofday(&started, NULL);
 			twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
-			gettimeofday(&cur_time, NULL);
+			/*gettimeofday(&cur_time, NULL);
 			sec_diff = cur_time.tv_sec - started.tv_sec;
 			if(sec_diff == 0) {
 				usec_diff = cur_time.tv_usec - started.tv_usec;
@@ -586,7 +588,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				sec_diff += (usec_diff / 1000000);
 				usec_diff = usec_diff % 1000000;
 			}
-			warn << sec_diff << "\t" << usec_diff << "\n";
+			warn << sec_diff << "\t" << usec_diff << "\n";*/
 
 			if(e) {
 				report_bad_node(rit->second);
@@ -1629,7 +1631,7 @@ node_list_watcher(string path) {
     	fatal << "Updated node list while doing initial list. Not implemented.\n";
     }
 
-	twait { czoo_get_children("/nodes" + datacenter, &node_list_watcher, mkevent(ret_node_list)); }
+	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(ret_node_list)); }
 	if(ret_node_list == NULL) {
 		fatal << "Error retrieving updated node list!\n";
 	}
@@ -1664,7 +1666,7 @@ node_list_watcher(string path) {
 	add_ids.resize(to_add.size());
 	add_rets.resize(to_add.size());
 	for( i=0, it = to_add.begin(); it != to_add.end(); i++, it++ ) {
-		search = "/nodes/" + datacenter + (*it);
+		search = "/nodes/" + datacenter + "/" + (*it);
 		add_ids[i] = *it;
         czoo_get(search, mkevent(rv, i, add_rets[i]));
 	}
