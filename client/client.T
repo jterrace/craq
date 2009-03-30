@@ -21,6 +21,7 @@ using namespace std;
 
 typedef enum { READ, WRITE } ev_t;
 typedef callback<void, string>::ref cbstr;
+typedef callback<void, blob>::ref cbblob;
 const unsigned int MAX_BUF = 2000;
 bool ring_init = false;
 typedef map<ID_Value, Node>::iterator ring_iter;
@@ -31,6 +32,15 @@ struct chain_meta {
 	vector<string> data_centers;
 };
 map<ID_Value, chain_meta> chain_meta_list;
+
+blob make_blob(const char * str) {
+	blob to_ret;
+	to_ret.setsize(strlen(str));
+	for(int i=0; i<strlen(str); i++) {
+		to_ret[i] = str[i];
+	}
+	return to_ret;
+}
 
 ID_Value get_sha1(string msg)
 {
@@ -190,7 +200,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 	TRIGGER(cb, "STORED\r\n");
 }
 
-tamed static void get_key(string key, cbstr cb) {
+tamed static void get_key(string key, cbblob cb) {
 
 	tvars {
 		ID_Value id;
@@ -204,13 +214,14 @@ tamed static void get_key(string key, cbstr cb) {
 		int fd;
 		int rnd;
 		int i;
+		blob to_ret;
 	}
 
 	id = get_sha1(key);
 
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
-		TRIGGER(cb, "NOT_FOUND\r\n");
+		TRIGGER(cb, make_blob("NOT_FOUND\r\n"));
 		return;
 	}
 
@@ -222,7 +233,7 @@ tamed static void get_key(string key, cbstr cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, make_blob("ERROR\r\n"));
 		return;
 	}
 	arg.id = id.get_rpc_id();
@@ -230,16 +241,23 @@ tamed static void get_key(string key, cbstr cb) {
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, make_blob("ERROR\r\n"));
 		return;
 	}
 
 	out << "VALUE " << ret.data.size() << "\r\n";
-	for(int i=0; i<ret.data.size(); i++) {
-		out << ret.data[i];
+
+	to_ret = make_blob(out.str().c_str());
+
+	rnd = to_ret.size();
+	to_ret.setsize(to_ret.size() + ret.data.size() + 2);
+	for(i=rnd; i<rnd + ret.data.size(); i++) {
+		to_ret[i] = ret.data[i-rnd];
 	}
-	out << "\r\n";
-	TRIGGER(cb, out.str());
+	to_ret[to_ret.size()-2] = '\r';
+	to_ret[to_ret.size()-1] = '\n';
+
+	TRIGGER(cb, to_ret);
 }
 
 tamed static void send_str(int fd, const char * str, cbb cb) {
@@ -247,6 +265,24 @@ tamed static void send_str(int fd, const char * str, cbb cb) {
 		strbuf data;
 	}
 	data.cat(str);
+	while(data.tosuio()->resid()) {
+		twait { tame::waitwrite(fd, mkevent()); }
+		if(data.tosuio()->output(fd) < 0) {
+			TRIGGER(cb, false);
+			return;
+		}
+	}
+	TRIGGER(cb, true);
+}
+
+tamed static void send_blob(int fd, blob bin_data, cbb cb) {
+	tvars {
+		strbuf data;
+		int i;
+	}
+	for(i=0; i<bin_data.size(); i++) {
+		data.tosuio()->copy(&bin_data[i], 1);
+	}
 	while(data.tosuio()->resid()) {
 		twait { tame::waitwrite(fd, mkevent()); }
 		if(data.tosuio()->output(fd) < 0) {
@@ -266,6 +302,7 @@ tamed static void process(int fd)
 		int line_len;
 		int byte_len;
 		string line, reply;
+		blob bin_rep;
 		char * temp_buf;
 		char buff[MAX_BUF];
 		vector<string> tokens;
@@ -325,8 +362,8 @@ tamed static void process(int fd)
 						}
 					}
 				} else if(tokens.size() == 2 && toLower(tokens[0])=="get") {
-					twait { get_key(tokens[1], mkevent(reply)); }
-					twait { send_str(fd, reply.c_str(), mkevent(ret)); }
+					twait { get_key(tokens[1], mkevent(bin_rep)); }
+					twait { send_blob(fd, bin_rep, mkevent(ret)); }
 					if(!ret) {
 						break;
 					}
