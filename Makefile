@@ -36,6 +36,7 @@ all: manager \
 	test/writer \
 	test/reader \
 	test/single_reader \
+	test/read_write \
 	client/client
 
 
@@ -100,6 +101,11 @@ test/single_reader: test/single_reader.T $(OBJS)
 	$(TAME) -o test/single_reader.C test/single_reader.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/single_reader.o -c test/single_reader.C
 	$(CC) $(CFLAGS) -o test/single_reader test/single_reader.o $(OBJS) $(LIBS)
+	
+test/read_write: test/read_write.T $(OBJS)
+	$(TAME) -o test/read_write.C test/read_write.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/read_write.o -c test/read_write.C
+	$(CC) $(CFLAGS) -o test/read_write test/read_write.o $(OBJS) $(LIBS)
 	
 client/client: client/client.T $(OBJS)
 	$(TAME) -o client/client.C client/client.T
