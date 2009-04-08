@@ -124,5 +124,6 @@ clean:
 		test/writer.C test/writer \
 		test/reader.C test/reader \
 		test/single_reader.C test/single_reader \
+		test/multi_read_write.C test/multi_read_write \
 		client/client client/client.C client/client.o \
 		*.o test/*.o

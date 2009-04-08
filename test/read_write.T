@@ -28,7 +28,7 @@ unsigned int CHAIN_SIZE;
 
 typedef enum { READ, WRITE } ev_t;
 typedef callback<void, string>::ref cbstr;
-typedef callback<void, blob>::ref cbblob;
+typedef callback<void, ptr<blob> >::ref cb_blob_ptr;
 const unsigned int MAX_BUF = 2000;
 bool ring_init = false;
 typedef map<ID_Value, Node>::iterator ring_iter;
@@ -68,48 +68,6 @@ void ring_incr(ring_iter * it) {
 	(*it)++;
 	if( (*it)==ring.end() ) {
 		(*it) = ring.begin();
-	}
-}
-
-string toLower(string str) {
-	transform(str.begin(), str.end(), str.begin(), ::tolower);
-	return str;
-}
-
-string toUpper(string str) {
-	transform(str.begin(), str.end(), str.begin(), ::toupper);
-	return str;
-}
-
-vector<string> tokenize(const string & str, const string & delimiters = " ") {
-	vector<string> tokens;
-
-	// Skip delimiters at beginning.
-	string::size_type lastPos = str.find_first_not_of(delimiters, 0);
-	// Find first "non-delimiter".
-	string::size_type pos = str.find_first_of(delimiters, lastPos);
-
-	while (string::npos != pos || string::npos != lastPos) {
-		// Found a token, add it to the vector.
-		tokens.push_back(str.substr(lastPos, pos - lastPos));
-		// Skip delimiters.  Note the "not_of"
-		lastPos = str.find_first_not_of(delimiters, pos);
-		// Find next "non-delimiter"
-		pos = str.find_first_of(delimiters, lastPos);
-	}
-
-	return tokens;
-}
-
-
-void trim(string & str, const string & delimiters = " \t\r\n") {
-	size_t startpos = str.find_first_not_of(delimiters);
-	size_t endpos = str.find_last_not_of(delimiters);
-
-	if(( string::npos == startpos ) || ( string::npos == endpos)) {
-		str = "";
-	} else {
-		str = str.substr(startpos, endpos-startpos+1);
 	}
 }
 
@@ -156,7 +114,7 @@ tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain
 
 }
 
-tamed static void set_key(string key, blob data, cbstr cb) {
+tamed static void set_key(string key, blob data, cbb cb) {
 
 	tvars {
 		ID_Value id;
@@ -177,7 +135,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, false);
 		return;
 	}
 
@@ -190,7 +148,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 		twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
 		if(e || add_ret == ADD_CHAIN_FAILURE) {
-			TRIGGER(cb, "ERROR\r\n");
+			TRIGGER(cb, false);
 			return;
 		}
 	}
@@ -200,14 +158,14 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 	wrt_arg.data = data;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, false);
 		return;
 	}
 
-	TRIGGER(cb, "STORED\r\n");
+	TRIGGER(cb, true);
 }
 
-tamed static void get_key(string key, cbblob cb) {
+tamed static void get_key(string key, cb_blob_ptr cb) {
 
 	tvars {
 		ID_Value id;
@@ -221,14 +179,14 @@ tamed static void get_key(string key, cbblob cb) {
 		int fd;
 		int rnd;
 		int i;
-		blob to_ret;
+		ptr<blob> to_ret;
 	}
 
 	id = get_sha1(key);
 
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
-		TRIGGER(cb, make_blob("NOT_FOUND\r\n"));
+		TRIGGER(cb, NULL);
 		return;
 	}
 
@@ -240,7 +198,7 @@ tamed static void get_key(string key, cbblob cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, make_blob("ERROR\r\n"));
+		TRIGGER(cb, NULL);
 		return;
 	}
 	arg.id = id.get_rpc_id();
@@ -248,206 +206,13 @@ tamed static void get_key(string key, cbblob cb) {
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
-		TRIGGER(cb, make_blob("ERROR\r\n"));
+		TRIGGER(cb, NULL);
 		return;
 	}
 
-	out << "VALUE " << ret.data.size() << "\r\n";
-
-	to_ret = make_blob(out.str().c_str());
-
-	rnd = to_ret.size();
-	to_ret.setsize(to_ret.size() + ret.data.size() + 2);
-	for(i=rnd; i<rnd + ret.data.size(); i++) {
-		to_ret[i] = ret.data[i-rnd];
-	}
-	to_ret[to_ret.size()-2] = '\r';
-	to_ret[to_ret.size()-1] = '\n';
-
+	to_ret = New refcounted<blob>;
+	*to_ret = ret.data;
 	TRIGGER(cb, to_ret);
-}
-
-tamed static void send_str(int fd, const char * str, cbb cb) {
-	tvars {
-		strbuf data;
-	}
-	data.cat(str);
-	while(data.tosuio()->resid()) {
-		twait { tame::waitwrite(fd, mkevent()); }
-		if(data.tosuio()->output(fd) < 0) {
-			TRIGGER(cb, false);
-			return;
-		}
-	}
-	TRIGGER(cb, true);
-}
-
-tamed static void send_blob(int fd, blob bin_data, cbb cb) {
-	tvars {
-		strbuf data;
-		int i;
-	}
-	for(i=0; i<bin_data.size(); i++) {
-		data.tosuio()->copy(&bin_data[i], 1);
-	}
-	while(data.tosuio()->resid()) {
-		twait { tame::waitwrite(fd, mkevent()); }
-		if(data.tosuio()->output(fd) < 0) {
-			TRIGGER(cb, false);
-			return;
-		}
-	}
-	TRIGGER(cb, true);
-}
-
-tamed static void process(int fd)
-{
-
-	tvars {
-		strbuf resp;
-		int rc;
-		int line_len;
-		int byte_len;
-		string line, reply;
-		blob bin_rep;
-		char * temp_buf;
-		char buff[MAX_BUF];
-		vector<string> tokens;
-		bool ret;
-		blob data;
-		int i;
-	}
-
-	while(true) {
-		twait { tame::waitread (fd, mkevent()); }
-		if( (rc = resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
-			break;
-		}
-
-		line_len = resp.tosuio()->linelen();
-		while(line_len > 0) {
-			if(line_len < MAX_BUF) {
-				resp.tosuio()->copyout(buff, line_len);
-				buff[line_len] = '\0';
-				line = buff;
-				trim(line);
-				tokens = tokenize(line);
-				if(tokens.size() == 3 && toLower(tokens[0])=="set") {
-					if(!convertint(tokens[2].c_str(), &byte_len) || byte_len < 0) {
-						twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
-						if(!ret) {
-							break;
-						}
-					} else {
-						resp.tosuio()->rembytes(line_len);
-						line_len = 0;
-						while(resp.tosuio()->resid() < byte_len + 2) {
-							twait { tame::waitread (fd, mkevent()); }
-							if( (rc = resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
-								break;
-							}
-						}
-						temp_buf = new char[byte_len+2];
-						resp.tosuio()->copyout(temp_buf, byte_len+2);
-						if(temp_buf[byte_len] != '\r' || temp_buf[byte_len+1] != '\n') {
-							twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
-							if(!ret) {
-								break;
-							}
-						} else {
-							data.setsize(byte_len);
-							for(i=0; i<byte_len; i++) {
-								data[i] = temp_buf[i];
-							}
-							delete [] temp_buf;
-							resp.tosuio()->rembytes(byte_len+2);
-							twait { set_key(tokens[1], data, mkevent(reply)); }
-							twait { send_str(fd, reply.c_str(), mkevent(ret)); }
-							if(!ret) {
-								break;
-							}
-						}
-					}
-				} else if(tokens.size() == 2 && toLower(tokens[0])=="get") {
-					twait { get_key(tokens[1], mkevent(bin_rep)); }
-					twait { send_blob(fd, bin_rep, mkevent(ret)); }
-					if(!ret) {
-						break;
-					}
-				} else {
-					twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
-					if(!ret) {
-						break;
-					}
-				}
-			} else {
-				twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
-				if(!ret) {
-					break;
-				}
-			}
-			resp.tosuio()->rembytes(line_len);
-			line_len = resp.tosuio()->linelen();
-		}
-
-		if (rc == 0) {
-			break;
-		}
-
-	}
-
-	close(fd);
-
-}
-
-static int listen_on(int port)
-{
-	int fd = inetsocket(SOCK_STREAM, port);
-	if (fd >= 0) {
-		close_on_exec(fd);
-		listen(fd, 20);
-	} else {
-		return -1;
-	}
-	return fd;
-}
-
-tamed static void listen_loop(int lport) {
-
-	tvars {
-		int lsock, rc, nfd;
-		rendezvous_t<ev_t> G (__FILE__, __LINE__);
-		ev_t which;
-		sockaddr_in sin;
-		socklen_t sinlen (sizeof (sin));
-	}
-
-	lsock = listen_on(lport);
-	if(lsock <= 0) {
-		fatal << "Listen failed on port '" << lport << "'. Dying.\n";
-	}
-
-	while (true) {
-		tame::waitread (lsock, mkevent (G, READ));
-
-		warn << "Waiting for connections...\n";
-		twait (G, which);
-
-		switch (which) {
-			case READ:
-				bzero (&sin, sinlen);
-				if ((nfd = accept (lsock, reinterpret_cast<sockaddr *> (&sin), &sinlen)) >= 0) {
-					warn << "Accepting connection from '" << inet_ntoa(sin.sin_addr) << "'.\n";
-					process(nfd);
-				} else {
-					warn << "Accept failed.\n";
-				}
-				break;
-			default:
-				fatal << "Got unknown message. Dying.\n";
-		}
-	}
-
 }
 
 tamed static void node_added(Node node_changed) {
@@ -541,9 +306,8 @@ tamed static void node_list_watcher(string path) {
 
 }
 
-tamed static void connect_to_manager(str h, int port, cbv cb) {
+tamed static void connect_to_manager(string zookeeper_list, cbv cb) {
 	tvars {
-		ostringstream ss;
 		bool rc;
 		vector<string> * node_list;
 		vector<string *> node_vals;
@@ -553,8 +317,7 @@ tamed static void connect_to_manager(str h, int port, cbv cb) {
 		Node new_node;
 	}
 
-	ss << h << ":" << port;
-	twait { czoo_init( ss.str().c_str(), mkevent(rc), ZOO_LOG_LEVEL_ERROR); }
+	twait { czoo_init( zookeeper_list.c_str(), mkevent(rc), ZOO_LOG_LEVEL_ERROR); }
 	if(!rc) {
 		fatal << "Couldn't initialize ZooKeeper. Dying.\n";
 	}
@@ -594,9 +357,8 @@ tamed static void connect_to_manager(str h, int port, cbv cb) {
 tamed static void main2(int argc, char **argv) {
 	tvars {
 		int listen_port;
-		str manager_hostname;
 		str type;
-		int manager_port;
+		string zookeeper_list;
 		str user_ip;
 		str data_center;
 	}
@@ -604,8 +366,7 @@ tamed static void main2(int argc, char **argv) {
 	try
 	{
 		TCLAP::CmdLine cmd("read_write can read and write data to CRAQ", ' ', "0.2");
-		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
-		TCLAP::ValueArg<int> managerPort("p", "manager_port", "Manager port number", true, 0, "int", cmd);
+		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, 0, "int", cmd);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Datacenter name", true, "", "string", cmd);
 
 		TCLAP::ValueArg<string> chainName("a", "chain_name", "Identifier for chain (will be converted with SHA256)", true, "", "string", cmd);
@@ -621,8 +382,7 @@ tamed static void main2(int argc, char **argv) {
 
 		cmd.parse(argc, argv);
 
-		manager_hostname = managerHost.getValue().c_str();
-		manager_port = managerPort.getValue();
+		zookeeper_list = zooKeeperList.getValue();
 		data_center = dataCenter.getValue().c_str();
 		CHAIN_NAME = chainName.getValue();
 		KEY_NAME = keyName.getValue();
@@ -638,10 +398,8 @@ tamed static void main2(int argc, char **argv) {
 
 	datacenter = data_center.cstr();
 	warn << "Initializing...";
-	twait { connect_to_manager(manager_hostname, manager_port, mkevent()); }
+	twait { connect_to_manager(zookeeper_list, mkevent()); }
 	warn << " Done.\n";
-
-	listen_loop(listen_port);
 
 }
 
