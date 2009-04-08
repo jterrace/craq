@@ -29,6 +29,7 @@ unsigned int CHAIN_SIZE;
 typedef enum { READ, WRITE } ev_t;
 typedef callback<void, string>::ref cbstr;
 typedef callback<void, ptr<blob> >::ref cb_blob_ptr;
+typedef callback<void, add_chain_ret>::ref cb_addchain;
 const unsigned int MAX_BUF = 2000;
 bool ring_init = false;
 typedef map<ID_Value, Node>::iterator ring_iter;
@@ -39,6 +40,8 @@ struct chain_meta {
 	vector<string> data_centers;
 };
 map<ID_Value, chain_meta> chain_meta_list;
+
+map<ID_Value, blob> keys;
 
 blob make_blob(const char * str) {
 	blob to_ret;
@@ -71,7 +74,7 @@ void ring_incr(ring_iter * it) {
 	}
 }
 
-tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain_meta> > > cb) {
+tamed static void get_chain_info(ID_Value * chain_id, ptr<callback<void, ptr<chain_meta> > > cb) {
 	tvars {
 		ptr<chain_meta> ret;
 		string * val;
@@ -80,7 +83,7 @@ tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain
 		map<ID_Value, chain_meta>::iterator it;
 	}
 
-	it = chain_meta_list.find(chain_id);
+	it = chain_meta_list.find(*chain_id);
 	if(it != chain_meta_list.end()) {
 		ret = New refcounted<chain_meta>;
 		*ret = it->second;
@@ -88,7 +91,7 @@ tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain
 		return;
 	}
 
-	twait{ czoo_get("/keys/" + chain_id.toString(), mkevent(val)); }
+	twait{ czoo_get("/keys/" + chain_id->toString(), mkevent(val)); }
 	if(val == NULL) {
 		ret = NULL;
 		TRIGGER(cb, ret);
@@ -109,29 +112,63 @@ tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain
 		fatal << "Got no data centers back from zookeeper chain node!\n";
 	}
 
-	chain_meta_list[chain_id] = *ret;
+	chain_meta_list[*chain_id] = *ret;
 	TRIGGER(cb, ret);
 
 }
 
-tamed static void set_key(string key, blob data, cbb cb) {
+tamed static void add_chain(ID_Value * id, int chain_size, cb_addchain cb) {
+	tvars {
+		ring_iter succ;
+		add_chain_arg add_arg;
+		add_chain_ret add_ret;
+		ptr<aclnt> cli;
+		clnt_stat e;
+		int fd;
+	}
+
+	succ = ring_succ(*id);
+
+	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	if(fd < 0) {
+		TRIGGER(cb, ADD_CHAIN_FAILURE);
+		return;
+	}
+
+	add_arg.id = id->get_rpc_id();
+	add_arg.chain_size = chain_size;
+	add_arg.data_centers.setsize(1);
+	add_arg.data_centers[0] = datacenter.c_str();
+
+	twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
+	if(e) {
+		TRIGGER(cb, ADD_CHAIN_FAILURE);
+		return;
+	}
+
+	TRIGGER(cb, add_ret);
+}
+
+tamed static void set_key(ID_Value * id, cbb cb) {
 
 	tvars {
-		ID_Value id;
 		ring_iter succ;
 		ptr<chain_meta> chain_info;
 		ptr<aclnt> cli;
 		ostringstream out;
 		clnt_stat e;
 		int fd;
-		add_chain_arg add_arg;
-		add_chain_ret add_ret;
 		head_write_arg wrt_arg;
 		bool rc;
+		map<ID_Value, blob>::iterator it;
 	}
 
-	id = get_sha1(key);
-	succ = ring_succ(id);
+	succ = ring_succ(*id);
+	it = keys.find(*id);
+	if(it == keys.end()) {
+		TRIGGER(cb, false);
+		return;
+	}
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
@@ -141,21 +178,12 @@ tamed static void set_key(string key, blob data, cbb cb) {
 
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
-		add_arg.id = id.get_rpc_id();
-		add_arg.chain_size = 3;
-		add_arg.data_centers.setsize(1);
-		add_arg.data_centers[0] = datacenter.c_str();
-
-		twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
-		if(e || add_ret == ADD_CHAIN_FAILURE) {
-			TRIGGER(cb, false);
-			return;
-		}
+		TRIGGER(cb, false);
 	}
 
-	wrt_arg.chain = id.get_rpc_id();
-	wrt_arg.id = id.get_rpc_id();
-	wrt_arg.data = data;
+	wrt_arg.chain = id->get_rpc_id();
+	wrt_arg.id = id->get_rpc_id();
+	wrt_arg.data = it->second;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
 		TRIGGER(cb, false);
@@ -165,10 +193,9 @@ tamed static void set_key(string key, blob data, cbb cb) {
 	TRIGGER(cb, true);
 }
 
-tamed static void get_key(string key, cb_blob_ptr cb) {
+tamed static void get_key(ID_Value * id, cb_blob_ptr cb) {
 
 	tvars {
-		ID_Value id;
 		ring_iter succ;
 		ptr<chain_meta> chain_info;
 		ptr<aclnt> cli;
@@ -182,15 +209,13 @@ tamed static void get_key(string key, cb_blob_ptr cb) {
 		ptr<blob> to_ret;
 	}
 
-	id = get_sha1(key);
-
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
 		TRIGGER(cb, NULL);
 		return;
 	}
 
-	succ = ring_succ(id);
+	succ = ring_succ(*id);
 	rnd = rand() % chain_info->chain_size;
 	for( ; rnd>0; rnd--) {
 		ring_incr(&succ);
@@ -201,8 +226,8 @@ tamed static void get_key(string key, cb_blob_ptr cb) {
 		TRIGGER(cb, NULL);
 		return;
 	}
-	arg.id = id.get_rpc_id();
-	arg.chain = id.get_rpc_id();
+	arg.id = id->get_rpc_id();
+	arg.chain = id->get_rpc_id();
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
@@ -213,6 +238,84 @@ tamed static void get_key(string key, cb_blob_ptr cb) {
 	to_ret = New refcounted<blob>;
 	*to_ret = ret.data;
 	TRIGGER(cb, to_ret);
+}
+
+tamed static void run_test() {
+
+	/*srand(9);
+	keys.resize(1);
+	i = 0;
+	keys[i].msg.setsize(MESSAGE_SIZE);
+	for(j=0; j<MESSAGE_SIZE; j++) {
+		keys[i].msg[j] = rand() % 256;
+	}
+	keys[i].id = get_sha1(KEY_NAME);
+	keys[i].chain_id = get_sha1(CHAIN_NAME);
+	it = ring.lower_bound(keys[i].id);
+	if(it == ring.end()) it = ring.begin();
+	keys[i].head = it->second;
+	keys[i].head_it = it;
+	for(j=0; j<CHAIN_SIZE-1; j++) {
+		it++;
+		if(it == ring.end()) it = ring.begin();
+	}
+	keys[i].tail = it->second;
+
+	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
+	if(fd < 0 ) {
+		fatal << "Error connecting to node to add chain\n";
+	}
+	x = axprt_stream::alloc(fd);
+	cli = aclnt::alloc(x, chain_node_1);
+	arg.id = get_sha1(CHAIN_NAME).get_rpc_id();
+	arg.chain_size = CHAIN_SIZE;
+	arg.data_centers.setsize(DATA_CENTERS.size());
+	for(i=0; i<DATA_CENTERS.size(); i++) {
+		arg.data_centers[i] = DATA_CENTERS[i].c_str();
+	}
+
+	twait { cli->call(ADD_CHAIN, &arg, &add_ret, mkevent(e)); }
+	if(e || add_ret == ADD_CHAIN_FAILURE) {
+		fatal << "Error adding chain!\n";
+	}
+
+	wrt_arg.chain = keys[0].chain_id.get_rpc_id();
+	wrt_arg.id =  keys[0].id.get_rpc_id();
+	wrt_arg.data =  keys[0].msg;
+	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
+	if(e || !rc) {
+		//fatal << "Initial write failed!\n";
+	}
+
+	gettimeofday(&cur_time, NULL);
+	start_time = cur_time;
+	last_time = start_time;
+
+	num_data = 0;
+	sum_data = 0.0;
+	i = 0;
+	k = 0;
+	nsent = 0;
+	nrecv = 0;
+
+	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+
+	srand(time(NULL));
+	//warn << "Starting reads...\n";
+	num_secs = NUM_SECS;
+	wait_time = 1000000000 / MSGS_PER_SEC;
+	while ( time_diff(start_time, cur_time) < num_secs ) {
+		gettimeofday(&cur_time, NULL);
+		read_it(&keys[i]);
+		twait{ delaycb(0, wait_time, mkevent()); }
+	}
+	//ss.str("");
+	//ss << (sum_data / (double)num_data);
+	//warn << "Average: " << ss.str().c_str() << " replies/second\n";
+
+	exit(0);*/
+
+
 }
 
 tamed static void node_added(Node node_changed) {
@@ -400,7 +503,7 @@ tamed static void main2(int argc, char **argv) {
 	warn << "Initializing...";
 	twait { connect_to_manager(zookeeper_list, mkevent()); }
 	warn << " Done.\n";
-
+	run_test();
 }
 
 int main (int argc, char *argv[]) {
