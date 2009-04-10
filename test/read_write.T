@@ -315,11 +315,17 @@ tamed static void run_test() {
 
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
-	wait_time = 1000000000 / MSGS_PER_SEC;
+	if(MSGS_PER_SEC != 0) {
+		wait_time = 1000000000 / MSGS_PER_SEC;
+	}
 	while ( time_diff(start_time, cur_time) < NUM_SECS ) {
 		gettimeofday(&cur_time, NULL);
-		read(&chain_id, &id);
-		twait{ delaycb(0, wait_time, mkevent()); }
+		if(MSGS_PER_SEC == 0) {
+			twait { read(&chain_id, &id); }
+		} else {
+			read(&chain_id, &id);
+			twait{ delaycb(0, wait_time, mkevent()); }
+		}
 	}
 
 	exit(0);
@@ -482,7 +488,7 @@ tamed static void main2(int argc, char **argv) {
 		TCLAP::ValueArg<int> keySize("s", "key_size", "Size of key data to generate", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chain within the data center", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
-		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read or write", true, 0, "int", cmd);
+		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read or write (if 0, next operation will be run when previous completes)", true, 0, "int", cmd);
 
 		TCLAP::SwitchArg rdSwitch("R", "read", "Sets this client as a reader", false);
 		TCLAP::SwitchArg wrtSwitch("W", "write", "Sets this client as a writer", false);
