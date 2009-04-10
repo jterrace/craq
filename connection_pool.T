@@ -1,6 +1,6 @@
 #include "connection_pool.H"
 
-const u_int NUM_POOLS = 50;
+const u_int NUM_POOLS = 10;
 u_int glob_pool = 0;
 deque<conn_info> conn_pool[NUM_POOLS];
 
