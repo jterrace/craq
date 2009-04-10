@@ -43,6 +43,12 @@ map<ID_Value, chain_meta> chain_meta_list;
 
 map<ID_Value, blob> keys;
 
+double time_diff( timeval first, timeval second ) {
+	double sec_diff = second.tv_sec - first.tv_sec;
+	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
+	return sec_diff;
+}
+
 blob make_blob(const char * str) {
 	blob to_ret;
 	to_ret.setsize(strlen(str));
@@ -149,7 +155,7 @@ tamed static void add_chain(ID_Value * id, int chain_size, cb_addchain cb) {
 	TRIGGER(cb, add_ret);
 }
 
-tamed static void set_key(ID_Value * id, cbb cb) {
+tamed static void set_key(ID_Value * chain_id, ID_Value * id, cbb cb) {
 
 	tvars {
 		ring_iter succ;
@@ -176,12 +182,13 @@ tamed static void set_key(ID_Value * id, cbb cb) {
 		return;
 	}
 
-	twait{ get_chain_info(id, mkevent(chain_info)); }
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
 		TRIGGER(cb, false);
+		return;
 	}
 
-	wrt_arg.chain = id->get_rpc_id();
+	wrt_arg.chain = chain_id->get_rpc_id();
 	wrt_arg.id = id->get_rpc_id();
 	wrt_arg.data = it->second;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
@@ -193,7 +200,7 @@ tamed static void set_key(ID_Value * id, cbb cb) {
 	TRIGGER(cb, true);
 }
 
-tamed static void get_key(ID_Value * id, cb_blob_ptr cb) {
+tamed static void get_key(ID_Value * chain_id, ID_Value * id, cb_blob_ptr cb) {
 
 	tvars {
 		ring_iter succ;
@@ -209,7 +216,7 @@ tamed static void get_key(ID_Value * id, cb_blob_ptr cb) {
 		ptr<blob> to_ret;
 	}
 
-	twait{ get_chain_info(id, mkevent(chain_info)); }
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
 		TRIGGER(cb, NULL);
 		return;
@@ -227,7 +234,7 @@ tamed static void get_key(ID_Value * id, cb_blob_ptr cb) {
 		return;
 	}
 	arg.id = id->get_rpc_id();
-	arg.chain = id->get_rpc_id();
+	arg.chain = chain_id->get_rpc_id();
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
@@ -240,82 +247,82 @@ tamed static void get_key(ID_Value * id, cb_blob_ptr cb) {
 	TRIGGER(cb, to_ret);
 }
 
+tamed static void read(ID_Value * chain_id, ID_Value * id) {
+	tvars {
+		ptr<blob> ret;
+		timeval start_time;
+		timeval end_time;
+		long sec_diff;
+		long usec_diff;
+	}
+	gettimeofday(&start_time, NULL);
+	while(ret == NULL || ret->size() != MESSAGE_SIZE) {
+		twait { get_key(chain_id, id, mkevent(ret)); }
+	}
+	gettimeofday(&end_time, NULL);
+	warn << "R\t";
+	warn << start_time.tv_sec << "\t" << start_time.tv_usec << "\t";
+	sec_diff = end_time.tv_sec - start_time.tv_sec;
+	if(sec_diff == 0) {
+		usec_diff = end_time.tv_usec - start_time.tv_usec;
+	} else {
+		usec_diff = (1000000 - start_time.tv_usec) + end_time.tv_usec;
+		sec_diff--;
+		sec_diff += (usec_diff / 1000000);
+		usec_diff = usec_diff % 1000000;
+	}
+	warn << sec_diff << "\t" << usec_diff << "\n";
+}
+
 tamed static void run_test() {
 
-	/*srand(9);
-	keys.resize(1);
-	i = 0;
-	keys[i].msg.setsize(MESSAGE_SIZE);
-	for(j=0; j<MESSAGE_SIZE; j++) {
-		keys[i].msg[j] = rand() % 256;
-	}
-	keys[i].id = get_sha1(KEY_NAME);
-	keys[i].chain_id = get_sha1(CHAIN_NAME);
-	it = ring.lower_bound(keys[i].id);
-	if(it == ring.end()) it = ring.begin();
-	keys[i].head = it->second;
-	keys[i].head_it = it;
-	for(j=0; j<CHAIN_SIZE-1; j++) {
-		it++;
-		if(it == ring.end()) it = ring.begin();
-	}
-	keys[i].tail = it->second;
-
-	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
-	if(fd < 0 ) {
-		fatal << "Error connecting to node to add chain\n";
-	}
-	x = axprt_stream::alloc(fd);
-	cli = aclnt::alloc(x, chain_node_1);
-	arg.id = get_sha1(CHAIN_NAME).get_rpc_id();
-	arg.chain_size = CHAIN_SIZE;
-	arg.data_centers.setsize(DATA_CENTERS.size());
-	for(i=0; i<DATA_CENTERS.size(); i++) {
-		arg.data_centers[i] = DATA_CENTERS[i].c_str();
+	tvars {
+		int i;
+		blob data;
+		ID_Value id;
+		ID_Value chain_id;
+		add_chain_ret add_ret;
+		bool ret;
+		timeval cur_time;
+		timeval start_time;
+		timeval last_time;
+		unsigned int wait_time;
 	}
 
-	twait { cli->call(ADD_CHAIN, &arg, &add_ret, mkevent(e)); }
-	if(e || add_ret == ADD_CHAIN_FAILURE) {
-		fatal << "Error adding chain!\n";
+	srand(9);
+	data.setsize(MESSAGE_SIZE);
+	for(i=0; i<MESSAGE_SIZE; i++) {
+		data[i] = rand() % 94 + 32;
+	}
+	id = get_sha1(KEY_NAME);
+	chain_id = get_sha1(CHAIN_NAME);
+	keys[id] = data;
+
+	twait { add_chain(&chain_id, CHAIN_SIZE, mkevent(add_ret)); }
+	if(add_ret == ADD_CHAIN_FAILURE) {
+		fatal << "Got failure for ADD_CHAIN\n";
 	}
 
-	wrt_arg.chain = keys[0].chain_id.get_rpc_id();
-	wrt_arg.id =  keys[0].id.get_rpc_id();
-	wrt_arg.data =  keys[0].msg;
-	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
-	if(e || !rc) {
-		//fatal << "Initial write failed!\n";
+	twait { set_key(&chain_id, &id, mkevent(ret)); }
+	if(!ret) {
+		fatal << "Got failure for initial key write\n";
 	}
 
+	srand(time(NULL));
 	gettimeofday(&cur_time, NULL);
 	start_time = cur_time;
 	last_time = start_time;
 
-	num_data = 0;
-	sum_data = 0.0;
-	i = 0;
-	k = 0;
-	nsent = 0;
-	nrecv = 0;
-
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
-	srand(time(NULL));
-	//warn << "Starting reads...\n";
-	num_secs = NUM_SECS;
 	wait_time = 1000000000 / MSGS_PER_SEC;
-	while ( time_diff(start_time, cur_time) < num_secs ) {
+	while ( time_diff(start_time, cur_time) < NUM_SECS ) {
 		gettimeofday(&cur_time, NULL);
-		read_it(&keys[i]);
+		read(&chain_id, &id);
 		twait{ delaycb(0, wait_time, mkevent()); }
 	}
-	//ss.str("");
-	//ss << (sum_data / (double)num_data);
-	//warn << "Average: " << ss.str().c_str() << " replies/second\n";
 
-	exit(0);*/
-
-
+	exit(0);
 }
 
 tamed static void node_added(Node node_changed) {
@@ -447,7 +454,6 @@ tamed static void connect_to_manager(string zookeeper_list, cbv cb) {
 		new_node.set_from_string(*node_vals[i]);
 		ring[new_node.getId()] = new_node;
 		zoo_nodes[(*node_list)[i]] = new_node;
-		//warn << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
 		delete node_vals[i];
 	}
 
@@ -462,14 +468,13 @@ tamed static void main2(int argc, char **argv) {
 		int listen_port;
 		str type;
 		string zookeeper_list;
-		str user_ip;
-		str data_center;
 	}
 
 	try
 	{
 		TCLAP::CmdLine cmd("read_write can read and write data to CRAQ", ' ', "0.2");
-		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, 0, "int", cmd);
+
+		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, "", "string", cmd);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Datacenter name", true, "", "string", cmd);
 
 		TCLAP::ValueArg<string> chainName("a", "chain_name", "Identifier for chain (will be converted with SHA256)", true, "", "string", cmd);
@@ -486,7 +491,7 @@ tamed static void main2(int argc, char **argv) {
 		cmd.parse(argc, argv);
 
 		zookeeper_list = zooKeeperList.getValue();
-		data_center = dataCenter.getValue().c_str();
+		datacenter = dataCenter.getValue();
 		CHAIN_NAME = chainName.getValue();
 		KEY_NAME = keyName.getValue();
 		MESSAGE_SIZE = keySize.getValue();
@@ -499,15 +504,11 @@ tamed static void main2(int argc, char **argv) {
 		fatal << "Error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
 	}
 
-	datacenter = data_center.cstr();
-	warn << "Initializing...";
 	twait { connect_to_manager(zookeeper_list, mkevent()); }
-	warn << " Done.\n";
 	run_test();
 }
 
 int main (int argc, char *argv[]) {
-	srand(time(NULL));
 	main2(argc, argv);
 	amain();
 }

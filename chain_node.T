@@ -21,7 +21,7 @@
 #include "zoo_craq.H"
 #include <tclap/CmdLine.h>
 
-#define BUG 1
+#define BUG 0
 
 
 using namespace CryptoPP;
@@ -90,8 +90,6 @@ ring_iter ring_succ(ID_Value id);
 void ring_incr(ring_iter * it);
 void ring_decr(ring_iter * it);
 
-str manager_hostname;
-int manager_port;
 unsigned int known_version;
 
 map<ID_Value, Node> ring;
@@ -1684,7 +1682,7 @@ node_list_watcher(string path) {
 }
 
 tamed static void
-register_to_manager(int my_port, str h, int port) {
+register_to_manager(int my_port, string zoo_list) {
 	tvars {
 		int fd,r;
 		ptr<aclnt> cli;
@@ -1703,9 +1701,6 @@ register_to_manager(int my_port, str h, int port) {
 		Node new_node;
 	}
 
-	manager_hostname = h;
-	manager_port = port;
-
 	ip = get_ip_address();
 	srand ( time(NULL) );
 	r = rand();
@@ -1722,10 +1717,7 @@ register_to_manager(int my_port, str h, int port) {
 	ss << my_ip << " " << my_port << " " << my_id.toString();
 	my_node_str = ss.str();
 
-	ss.str("");
-	ss << manager_hostname << ":" << manager_port;
-
-	twait { czoo_init( ss.str().c_str(), mkevent(rc)); }
+	twait { czoo_init( zoo_list.c_str(), mkevent(rc)); }
 	if(!rc) {
 		fatal << "Couldn't connect to manager!\n";
 	}
@@ -1791,30 +1783,27 @@ register_to_manager(int my_port, str h, int port) {
 tamed static
 void main2(int argc, char **argv) {
 	int listen_port;
-	str manager_hostname;
+	string zookeeper_list;
 	str type;
-	int manager_port;
 
 	try
 	{
 		TCLAP::CmdLine cmd("chain_node starts up a single chain node in CRAQ", ' ', "0.2");
-		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
-		TCLAP::ValueArg<int> managerPort("r", "manager_port", "Manager port number", true, 0, "int", cmd);
+		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, "", "string", cmd);
 		TCLAP::ValueArg<int> listenPort("p", "listen_port", "Port to listen for connections", true, 0, "int", cmd);
 		TCLAP::ValueArg<string> ipAddress("i", "ip_address", "IP Address to listen for connections", false, "", "string", cmd);
 		TCLAP::SwitchArg crSwitch("c", "chain_replication", "Sets node to CR instead of CRAQ", cmd, true);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Sets the data center name this node belongs to", true, "", "string", cmd);
 		cmd.parse(argc, argv);
 
-		manager_hostname = managerHost.getValue().c_str();
-		manager_port = managerPort.getValue();
+		zookeeper_list = zooKeeperList.getValue();
 		listen_port = listenPort.getValue();
 		user_ip = ipAddress.getValue().c_str();
 		CRAQ = crSwitch.getValue();
 		datacenter = dataCenter.getValue();
 
 		start_rpc_srv(listen_port);
-		register_to_manager(listen_port, manager_hostname, manager_port);
+		register_to_manager(listen_port, zookeeper_list);
 	}
 	catch (TCLAP::ArgException &e)  // catch any exceptions
 	{
