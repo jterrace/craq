@@ -43,6 +43,8 @@ map<ID_Value, chain_meta> chain_meta_list;
 
 map<ID_Value, blob> keys;
 
+static void nothing() {}
+
 double time_diff( timeval first, timeval second ) {
 	double sec_diff = second.tv_sec - first.tv_sec;
 	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
@@ -247,7 +249,7 @@ tamed static void get_key(ID_Value * chain_id, ID_Value * id, cb_blob_ptr cb) {
 	TRIGGER(cb, to_ret);
 }
 
-tamed static void read(ID_Value * chain_id, ID_Value * id) {
+tamed static void read(ID_Value * chain_id, ID_Value * id, cbv cb) {
 	tvars {
 		ptr<blob> ret;
 		timeval start_time;
@@ -272,6 +274,7 @@ tamed static void read(ID_Value * chain_id, ID_Value * id) {
 		usec_diff = usec_diff % 1000000;
 	}
 	warn << sec_diff << "\t" << usec_diff << "\n";
+	TRIGGER(cb);
 }
 
 tamed static void run_test() {
@@ -321,9 +324,9 @@ tamed static void run_test() {
 	while ( time_diff(start_time, cur_time) < NUM_SECS ) {
 		gettimeofday(&cur_time, NULL);
 		if(MSGS_PER_SEC == 0) {
-			twait { read(&chain_id, &id); }
+			twait { read(&chain_id, &id, mkevent()); }
 		} else {
-			read(&chain_id, &id);
+			read(&chain_id, &id, wrap(nothing));
 			twait{ delaycb(0, wait_time, mkevent()); }
 		}
 	}
