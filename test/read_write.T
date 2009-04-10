@@ -260,11 +260,11 @@ tamed static void read(ID_Value * chain_id, ID_Value * id, cbv cb) {
 	gettimeofday(&start_time, NULL);
 	while(ret == NULL || ret->size() != MESSAGE_SIZE) {
 		twait { get_key(chain_id, id, mkevent(ret)); }
-		if(ret == NULL) {
-			warn << "NULL\n";
-		} else if(ret->size() != MESSAGE_SIZE) {
-			warn << "SIZE " << ret->size() << " " << MESSAGE_SIZE << "\n";
-		}
+		//if(ret == NULL) {
+			//warn << "NULL\n";
+		//} else if(ret->size() != MESSAGE_SIZE) {
+			//warn << "SIZE " << ret->size() << " " << MESSAGE_SIZE << "\n";
+		//}
 	}
 	gettimeofday(&end_time, NULL);
 	warn << "R\t";
