@@ -37,6 +37,7 @@ all: manager \
 	test/reader \
 	test/single_reader \
 	test/read_write \
+	test/get_chain_info \
 	client/client
 
 
@@ -107,6 +108,11 @@ test/read_write: test/read_write.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/read_write.o -c test/read_write.C
 	$(CC) $(CFLAGS) -o test/read_write test/read_write.o $(OBJS) $(LIBS)
 	
+test/get_chain_info: test/get_chain_info.T $(OBJS)
+	$(TAME) -o test/get_chain_info.C test/get_chain_info.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/get_chain_info.o -c test/get_chain_info.C
+	$(CC) $(CFLAGS) -o test/get_chain_info test/get_chain_info.o $(OBJS) $(LIBS)
+	
 client/client: client/client.T $(OBJS)
 	$(TAME) -o client/client.C client/client.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o client/client.o -c client/client.C
@@ -125,5 +131,6 @@ clean:
 		test/reader.C test/reader \
 		test/single_reader.C test/single_reader \
 		test/read_write.C test/read_write \
+		test/get_chain_info.C test/get_chain_info \
 		client/client client/client.C client/client.o \
 		*.o test/*.o
