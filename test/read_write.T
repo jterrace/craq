@@ -262,7 +262,7 @@ tamed static void read(ID_Value * chain_id, ID_Value * id, cbv cb) {
 		twait { get_key(chain_id, id, mkevent(ret)); }
 		if(ret == NULL) {
 			warn << "NULL\n";
-		} else {
+		} else if(ret->size() != MESSAGE_SIZE) {
 			warn << "SIZE " << ret->size() << " " << MESSAGE_SIZE << "\n";
 		}
 	}
