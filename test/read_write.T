@@ -25,6 +25,8 @@ unsigned int MESSAGE_SIZE;
 string CHAIN_NAME;
 string KEY_NAME;
 unsigned int CHAIN_SIZE;
+unsigned long WINDOW_SIZE;
+bool DO_READ;
 
 typedef enum { READ, WRITE } ev_t;
 typedef callback<void, string>::ref cbstr;
@@ -230,6 +232,7 @@ tamed static void get_key(ID_Value * chain_id, ID_Value * id, cb_blob_ptr cb) {
 		ring_incr(&succ);
 	}
 
+	//warn << succ->second.getIp().c_str() << ":" << succ->second.getPort() << "\n";
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
 		TRIGGER(cb, NULL);
@@ -249,25 +252,37 @@ tamed static void get_key(ID_Value * chain_id, ID_Value * id, cb_blob_ptr cb) {
 	TRIGGER(cb, to_ret);
 }
 
-tamed static void read(ID_Value * chain_id, ID_Value * id, cbv cb) {
+tamed static void op(ID_Value * chain_id, ID_Value * id, cbv cb) {
 	tvars {
 		ptr<blob> ret;
 		timeval start_time;
 		timeval end_time;
 		long sec_diff;
 		long usec_diff;
+		bool bret;
 	}
 	gettimeofday(&start_time, NULL);
-	while(ret == NULL || ret->size() != MESSAGE_SIZE) {
-		twait { get_key(chain_id, id, mkevent(ret)); }
-		//if(ret == NULL) {
-			//warn << "NULL\n";
-		//} else if(ret->size() != MESSAGE_SIZE) {
-			//warn << "SIZE " << ret->size() << " " << MESSAGE_SIZE << "\n";
-		//}
+	if(DO_READ) {
+		while(ret == NULL || ret->size() != MESSAGE_SIZE) {
+			twait { get_key(chain_id, id, mkevent(ret)); }
+			//if(ret == NULL) {
+			//	warn << "NULL\n";
+			//} else if(ret->size() != MESSAGE_SIZE) {
+			//	warn << "SIZE " << ret->size() << " " << MESSAGE_SIZE << "\n";
+			//}
+		}
+	} else {
+		bret = false;
+		while(!bret) {
+			twait { set_key(chain_id, id, mkevent(bret)); }
+		}
 	}
 	gettimeofday(&end_time, NULL);
-	warn << "R\t";
+	if(DO_READ) {
+		warn << "R\t";
+	} else {
+		warn << "W\t";
+	}
 	warn << start_time.tv_sec << "\t" << start_time.tv_usec << "\t";
 	sec_diff = end_time.tv_sec - start_time.tv_sec;
 	if(sec_diff == 0) {
@@ -295,6 +310,9 @@ tamed static void run_test() {
 		timeval start_time;
 		timeval last_time;
 		unsigned int wait_time;
+		unsigned long nsent;
+		unsigned long nrecv;
+		rendezvous_t<int> rv;
 	}
 
 	srand(9);
@@ -329,10 +347,16 @@ tamed static void run_test() {
 	while ( time_diff(start_time, cur_time) < NUM_SECS ) {
 		gettimeofday(&cur_time, NULL);
 		if(MSGS_PER_SEC == 0) {
-			twait { read(&chain_id, &id, mkevent()); }
-		} else {
-			read(&chain_id, &id, wrap(nothing));
+			twait { op(&chain_id, &id, mkevent()); }
+		} else if(MSGS_PER_SEC != -1) {
+			op(&chain_id, &id, wrap(nothing));
 			twait{ delaycb(0, wait_time, mkevent()); }
+		} else if((nsent-nrecv) < WINDOW_SIZE) {
+			op(&chain_id, &id, mkevent(rv, 0));
+			nsent++;
+		} else {
+			twait(rv, i);
+			nrecv++;
 		}
 	}
 
@@ -351,6 +375,7 @@ tamed static void node_deleted(Node node_changed) {
 	if(it == ring.end()) {
 		fatal << "Deleting node that we didn't know about! Should never happen... dying!\n";
 	}
+	//warn << "deleting " << it->second.getPort() << "\n";
 	invalidate_rpc_host(it->second.getIp().c_str(), it->second.getPort());
 	ring.erase(it);
 }
@@ -482,7 +507,11 @@ tamed static void main2(int argc, char **argv) {
 		int listen_port;
 		str type;
 		string zookeeper_list;
+		timeval cur_time;
 	}
+
+	gettimeofday(&cur_time, NULL);
+	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	try
 	{
@@ -496,7 +525,10 @@ tamed static void main2(int argc, char **argv) {
 		TCLAP::ValueArg<int> keySize("s", "key_size", "Size of key data to generate", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chain within the data center", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
-		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read or write (if 0, next operation will be run when previous completes)", true, 0, "int", cmd);
+
+		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read or write (if 0, next operation will be run when previous completes)", false, -1, "int");
+		TCLAP::ValueArg<int> wndSize("w", "window_size", "Maximum window size of outstanding requests", false, -1, "int");
+		cmd.xorAdd(msgsPerSec, wndSize);
 
 		TCLAP::SwitchArg rdSwitch("R", "read", "Sets this client as a reader", false);
 		TCLAP::SwitchArg wrtSwitch("W", "write", "Sets this client as a writer", false);
@@ -512,6 +544,8 @@ tamed static void main2(int argc, char **argv) {
 		CHAIN_SIZE = chainSize.getValue();
 		NUM_SECS = numSecs.getValue();
 		MSGS_PER_SEC = msgsPerSec.getValue();
+		WINDOW_SIZE = wndSize.getValue();
+		DO_READ = rdSwitch.isSet();
 	}
 	catch (TCLAP::ArgException &e)  // catch any exceptions
 	{

@@ -276,6 +276,7 @@ tamed static void main2(int argc, char **argv) {
 		ptr<chain_meta> chain_info;
 		int i;
 		int rnd;
+		bool printPort;
 	}
 
 	try
@@ -284,6 +285,7 @@ tamed static void main2(int argc, char **argv) {
 
 		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, "", "string", cmd);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Datacenter name", true, "", "string", cmd);
+		TCLAP::SwitchArg portSwitch("p", "print_port", "Also print port number", cmd, false);
 
 		TCLAP::ValueArg<string> chainName("a", "chain_name", "Identifier for chain (will be converted with SHA256)", true, "", "string", cmd);
 		TCLAP::SwitchArg headSwitch("H", "head", "Returns the head", false);
@@ -302,6 +304,7 @@ tamed static void main2(int argc, char **argv) {
 		headSet = headSwitch.isSet();
 		tailSet = tailSwitch.isSet();
 		interSet = interiorSwitch.isSet();
+		printPort = portSwitch.getValue();
 
 	}
 	catch (TCLAP::ArgException &e)  // catch any exceptions
@@ -315,7 +318,11 @@ tamed static void main2(int argc, char **argv) {
 	id = get_sha1(chain_name);
 	loc = ring_succ(id);
 	if(headSet) {
-		warn << loc->second.getIp().c_str() << "\n";
+		warn << loc->second.getIp().c_str();
+		if(printPort) {
+			warn << ":" << loc->second.getPort();
+		}
+		warn << "\n";
 	} else {
 
 		twait { get_chain_info(&id, mkevent(chain_info)); }
@@ -327,14 +334,22 @@ tamed static void main2(int argc, char **argv) {
 			for(i=0; i<chain_info->chain_size - 1; i++) {
 				ring_incr(&loc);
 			}
-			warn << loc->second.getIp().c_str() << "\n";
+			warn << loc->second.getIp().c_str();
+			if(printPort) {
+				warn << ":" << loc->second.getPort();
+			}
+			warn << "\n";
 		} else if(interSet) {
 			srand(time(NULL));
 			rnd = rand() % chain_info->chain_size;
 			for( ; rnd>0; rnd--) {
 				ring_incr(&loc);
 			}
-			warn << loc->second.getIp().c_str() << "\n";
+			warn << loc->second.getIp().c_str();
+			if(printPort) {
+				warn << ":" << loc->second.getPort();
+			}
+			warn << "\n";
 		} else {
 			exit(1);
 		}

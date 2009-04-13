@@ -21,7 +21,7 @@
 #include "zoo_craq.H"
 #include <tclap/CmdLine.h>
 
-#define BUG 0
+#define BUG 1
 
 
 using namespace CryptoPP;
@@ -57,6 +57,7 @@ struct key_meta {
 	map<int, deque<svccb *> > write_reqs;
 	bool is_head;
 	bool is_tail;
+	ID_Value chain_id;
 };
 
 typedef map<ID_Value, Node>::iterator ring_iter;
@@ -70,7 +71,7 @@ static void process_head_write(svccb * sbp, CLOSURE);
 static void process_propagate(svccb * sbp, CLOSURE);
 static void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_back_propagate(svccb * sbp, CLOSURE);
-static void back_propagate(ID_Value id, bool send_committed, cbb cb, CLOSURE);
+static void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_ack(svccb * sbp, CLOSURE);
 static void process_add_chain(svccb * sbp, CLOSURE);
 static void ack(ID_Value chain_id, ID_Value id, cbb cb, CLOSURE);
@@ -105,6 +106,8 @@ map<ID_Value, chain_meta> chain_meta_list;
 map<string, map<ID_Value, Node> > ext_rings;
 
 bool update_running = false;
+
+void dont_care(bool x) {}
 
 void delay(long ms) {
   timespec ts;
@@ -701,6 +704,7 @@ tamed void process_head_write(svccb * sbp) {
 		wrt.is_head = true;
 		wrt.pending_list[1] = parg.data;
 		wrt.write_reqs[1].push_back(sbp);
+		wrt.chain_id = chain_id;
 		key_meta_list[id] = wrt;
 	} else {
 		//Update key if this is not the first
@@ -708,6 +712,7 @@ tamed void process_head_write(svccb * sbp) {
 		wrt.max_pending++;
 		wrt.pending_list[wrt.max_pending] = parg.data;
 		wrt.write_reqs[wrt.max_pending].push_back(sbp);
+		wrt.chain_id = chain_id;
 		key_meta_list[id] = wrt;
 	}
 
@@ -769,6 +774,7 @@ tamed void process_propagate(svccb * sbp) {
 	wrt.max_pending = 0;
 	wrt.is_tail = false;
 	wrt.is_head = false;
+	wrt.chain_id = chain_id;
 
 	t = ring_succ(id);
 	in_succ = false;
@@ -819,7 +825,7 @@ tamed void process_propagate(svccb * sbp) {
 		twait { ack(chain_id, id, mkevent(ret_val)); }
 	} else {
 		sbp->replyref(true);
-		TODO: twait { propagate(chain_id, id, parg.committed, mkevent(ret_val)); }
+		twait { propagate(chain_id, id, parg.committed, mkevent(ret_val)); }
 	}
 
 }
@@ -828,16 +834,39 @@ tamed void process_back_propagate(svccb * sbp) {
 	tvars {
 		propagate_arg parg;
 		ID_Value id;
+		ID_Value chain_id;
 		key_iter kit;
 		ring_iter t;
 		key_meta wrt;
 		u_int i;
 		bool in_succ;
 		bool ret_val;
+		ptr<chain_meta> chain_info;
 	}
 
 	parg = *(sbp->getarg<propagate_arg>());
 	if(BUG) warn << "Got BACK_PROPAGATE Request\n";
+
+	chain_id.set_from_rpc(parg.chain);
+
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		fatal << "Couldn't get chain info in back propagate!\n";
+		sbp->replyref(false);
+		return;
+	}
+
+	in_succ = false;
+	for(i=0; i<chain_info->data_centers.size(); i++) {
+		if(chain_info->data_centers[i] == datacenter) {
+			in_succ = true;
+		}
+	}
+	//Return false if we don't think we should be storing a replica of this key
+	if(!in_succ) {
+		sbp->replyref(false);
+		return;
+	}
 
 	id.set_from_rpc(parg.id);
 
@@ -857,14 +886,14 @@ tamed void process_back_propagate(svccb * sbp) {
 
 	t = ring_succ(id);
 	in_succ = false;
-	for(i=0; i<CHAIN_SIZE; i++) {
+	for(i=0; i<chain_info->chain_size; i++) {
 		if(t == my_node_ptr) {
 			in_succ = true;
 			break;
 		}
 		ring_incr(&t);
 	}
-	if(i == CHAIN_SIZE-1)
+	if(i == chain_info->chain_size-1)
 		wrt.is_tail = true;
 	if(i == 0)
 		wrt.is_head = true;
@@ -884,6 +913,7 @@ tamed void process_back_propagate(svccb * sbp) {
 		wrt.committed = parg.ver;
 		if(wrt.max_pending < wrt.committed)
 			wrt.max_pending = wrt.committed;
+		wrt.pending_list[wrt.max_pending] = parg.data;
 	} else {
 		wrt.max_pending = parg.ver;
 		wrt.pending_list[parg.ver] = parg.data;
@@ -891,7 +921,8 @@ tamed void process_back_propagate(svccb * sbp) {
 	key_meta_list[id] = wrt;
 
 	if(!wrt.is_head) {
-		twait { back_propagate(id, parg.committed, mkevent(ret_val)); }
+		sbp->replyref(true);
+		twait { back_propagate(chain_id, id, parg.committed, mkevent(ret_val)); }
 	}
 
 }
@@ -1029,6 +1060,7 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 
 	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
+		fatal << "Couldn't get chain info in propagate func!\n";
 		TRIGGER(cb, false);
 		return;
 	}
@@ -1110,7 +1142,7 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 
 }
 
-tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
+tamed void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb) {
 	tvars {
 		key_iter it;
 		ring_iter pred;
@@ -1130,14 +1162,12 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 	while(!rpc_ret) {
 		it = key_meta_list.find(id);
 		if(it == key_meta_list.end()) {
-			ret = false;
-			(*cb)(ret);
+			TRIGGER(cb, true);
 			return;
 		}
 
 		if(it->second.is_head) {
-			ret = true;
-			(*cb)(ret);
+			TRIGGER(cb, true);
 			return;
 		}
 
@@ -1147,10 +1177,10 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		if(send_committed) {
 			if(it->second.committed <= 0) {
 				//There is no committed version, so die
-				ret = true;
-				(*cb)(ret);
+				TRIGGER(cb, true);
 				return;
 			}
+			arg.chain = chain_id.get_rpc_id();
 			arg.id = id.get_rpc_id();
 			arg.ver = it->second.committed;
 			st_val = storage->get(id);
@@ -1162,10 +1192,10 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 		} else {
 			dt_it = it->second.pending_list.find(it->second.max_pending);
 			if(dt_it == it->second.pending_list.end()) {
-				ret = false;
-				(*cb)(ret);
+				TRIGGER(cb, false);
 				return;
 			}
+			arg.chain = chain_id.get_rpc_id();
 			arg.id = id.get_rpc_id();
 			arg.ver = it->second.max_pending;
 			arg.data = dt_it->second;
@@ -1192,8 +1222,7 @@ tamed void back_propagate(ID_Value id, bool send_committed, cbb cb) {
 
 	}
 
-	ret = true;
-	(*cb)(ret);
+	TRIGGER(cb, true);
 	return;
 
 }
@@ -1417,8 +1446,8 @@ tamed void node_added(Node node_changed) {
 	if(node_changed.getId().between(my_id, succ->first)) {
 		twait {
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
-				//TODO: propagate(k->first, false, mkevent(ret));
-				//TODO: propagate(k->first, true, mkevent(ret));
+				propagate(k->second.chain_id, k->first, false, mkevent(ret));
+				propagate(k->second.chain_id, k->first, true, mkevent(ret));
 			}
 		}
 		return;
@@ -1451,8 +1480,8 @@ tamed void node_added(Node node_changed) {
 						k->second.is_head = false;
 					}
 
-					back_propagate(k->first, false, mkevent(ret));
-					back_propagate(k->first, true, mkevent(ret));
+					back_propagate(k->second.chain_id, k->first, false, mkevent(ret));
+					back_propagate(k->second.chain_id, k->first, true, mkevent(ret));
 
 					if(k->second.is_tail) {
 						//We are no longer tail so remove
@@ -1512,6 +1541,7 @@ tamed void node_deleted(Node node_changed) {
 		key_iter temp;
 		bool ret;
 		u_int i;
+		ptr<chain_meta> chain_info;
 	}
 
 	if(BUG) warn << "Node deleted: " << node_changed.toString().c_str() << "\n";
@@ -1537,19 +1567,12 @@ tamed void node_deleted(Node node_changed) {
 	if(node_changed.getId().between(my_id, succ->first)) {
 		twait {
 			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
-				//TODO: propagate(k->first, false, mkevent(ret));
-				//TODO: propagate(k->first, true, mkevent(ret));
+				propagate(k->second.chain_id, k->first, false, mkevent(ret));
+				propagate(k->second.chain_id, k->first, true, mkevent(ret));
 			}
 		}
 		return;
 	}
-
-	cs_head = my_node_ptr;
-	for(i=0; i<(CHAIN_SIZE-1); i++) {
-		ring_decr(&cs_head);
-	}
-	cs_head_pred = cs_head;
-	ring_decr(&cs_head_pred);
 
 	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
 		 << " is between pred " << pred->first.toString().c_str()
@@ -1574,32 +1597,49 @@ tamed void node_deleted(Node node_changed) {
 					if(k->second.is_tail) {
 						if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
 						k->second.is_tail = false;
-						//TODO: propagate(k->first, false, mkevent(ret));
-						//TODO: propagate(k->first, true, mkevent(ret));
+						propagate(k->second.chain_id, k->first, false, mkevent(ret));
+						propagate(k->second.chain_id, k->first, true, mkevent(ret));
 					}
-					back_propagate(k->first, false, mkevent(ret));
-					back_propagate(k->first, true, mkevent(ret));
+					back_propagate(k->second.chain_id, k->first, false, mkevent(ret));
+					back_propagate(k->second.chain_id, k->first, true, mkevent(ret));
 				}
 			}
 		}
 		return;
 	}
 
+
+
 	if(BUG) warn << "Checking if node " << node_changed.getId().toString().c_str()
-		 << " is between first " << cs_head->first.toString().c_str()
+		 << " is between first " /*<< cs_head->first.toString().c_str()*/
 		 << " and me " << my_id.toString().c_str() << "\n";
 
 	//Check if in chain-size predecessor list and unmark tail and propagate
-	if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
-		twait {
-			for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
-				if(k->second.is_tail) {
-					if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
-					k->second.is_tail = false;
-					//TODO: propagate(k->first, false, mkevent(ret));
-					//TODO: propagate(k->first, true, mkevent(ret));
-				}
+	for(k = key_meta_list.begin(); k != key_meta_list.end(); k++) {
+		if(k->second.is_tail) {
+
+
+			twait{ get_chain_info(k->second.chain_id, mkevent(chain_info)); }
+			if(chain_info == NULL) {
+				fatal << "Couldn't get chain info in node_deleted\n";
 			}
+
+			cs_head = my_node_ptr;
+			for(i=0; i<(chain_info->chain_size-1); i++) {
+				ring_decr(&cs_head);
+			}
+			cs_head_pred = cs_head;
+			ring_decr(&cs_head_pred);
+
+			if(node_changed.getId().betweenIncl(cs_head->first, my_id)) {
+
+				if(BUG) warn << "No longer tail for " << k->first.toString().c_str() << "\n";
+				k->second.is_tail = false;
+				propagate(k->second.chain_id, k->first, false, wrap(dont_care));
+				propagate(k->second.chain_id, k->first, true, wrap(dont_care));
+
+			}
+
 		}
 	}
 
