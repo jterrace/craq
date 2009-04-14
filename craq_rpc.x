@@ -91,6 +91,7 @@ struct tail_read_ex_arg {
 struct tail_read_ex_ret {
  	blob data;
  	bool dirty;
+ 	unsigned ver;
 };
  
 enum add_chain_ret {
@@ -104,6 +105,13 @@ struct add_chain_arg {
  	rpc_string data_centers<>;
  	unsigned chain_size;
 };
+
+struct test_and_set_arg {
+	rpc_hash chain;
+	rpc_hash id;
+	blob data;
+	unsigned ver;
+};
  
 program CHAIN_NODE {
 	version CHAIN_NODE_VERSION {
@@ -112,6 +120,7 @@ program CHAIN_NODE {
  		bool HEAD_WRITE(head_write_arg) = 1;
   		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
   		add_chain_ret ADD_CHAIN(add_chain_arg) = 9;
+  		bool TEST_AND_SET(test_and_set_arg) = 10;
  		
  		//Internal functions
  		bool PROPAGATE(propagate_arg) = 2;

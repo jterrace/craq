@@ -38,6 +38,7 @@ all: manager \
 	test/single_reader \
 	test/read_write \
 	test/get_chain_info \
+	test/transaction_tester \
 	client/client
 
 
@@ -113,6 +114,11 @@ test/get_chain_info: test/get_chain_info.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o test/get_chain_info.o -c test/get_chain_info.C
 	$(CC) $(CFLAGS) -o test/get_chain_info test/get_chain_info.o $(OBJS) $(LIBS)
 	
+test/transaction_tester: test/transaction_tester.T $(OBJS)
+	$(TAME) -o test/transaction_tester.C test/transaction_tester.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o test/transaction_tester.o -c test/transaction_tester.C
+	$(CC) $(CFLAGS) -o test/transaction_tester test/transaction_tester.o $(OBJS) $(LIBS)
+	
 client/client: client/client.T $(OBJS)
 	$(TAME) -o client/client.C client/client.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o client/client.o -c client/client.C
@@ -132,5 +138,6 @@ clean:
 		test/single_reader.C test/single_reader \
 		test/read_write.C test/read_write \
 		test/get_chain_info.C test/get_chain_info \
+		test/transaction_tester.C test/transaction_tester \
 		client/client client/client.C client/client.o \
 		*.o test/*.o

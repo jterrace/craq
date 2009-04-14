@@ -74,6 +74,7 @@ static void process_back_propagate(svccb * sbp, CLOSURE);
 static void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb, CLOSURE);
 static void process_ack(svccb * sbp, CLOSURE);
 static void process_add_chain(svccb * sbp, CLOSURE);
+static void process_test_and_set(svccb * sbp, CLOSURE);
 static void ack(ID_Value chain_id, ID_Value id, cbb cb, CLOSURE);
 static void report_bad_node(Node n, CLOSURE);
 static void node_added(Node node_changed, CLOSURE);
@@ -539,6 +540,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			repl = storage->get(id);
 			to_rep.data = *repl;
 			to_rep.dirty = false;
+			to_rep.ver = it->second.committed;
 			sbp->replyref(to_rep);
 			return;
 		} else {
@@ -549,7 +551,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 			if(chain_info == NULL) {
 				fatal << "Couldn't get chain info in read!\n";
-				sbp->replyref(false);
+				sbp->replyref(NULL);
 				return;
 			}
 
@@ -609,6 +611,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 					repl = storage->get(id);
 					to_rep.data = *repl;
 					to_rep.dirty = true;
+					to_rep.ver = it->second.committed;
 					sbp->replyref(to_rep);
 					return;
 				}
@@ -624,6 +627,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				//Return tail's committed version
 				to_rep.data = kit->second;
 				to_rep.dirty = true;
+				to_rep.ver = ret.hist;
 				sbp->replyref(to_rep);
 				return;
 			}
@@ -638,6 +642,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		repl = storage->get(id);
 		to_rep.data = *repl;
 		to_rep.dirty = false;
+		to_rep.ver = (it->second).committed;
 		sbp->replyref(to_rep);
 	}
 }
@@ -715,6 +720,66 @@ tamed void process_head_write(svccb * sbp) {
 		wrt.chain_id = chain_id;
 		key_meta_list[id] = wrt;
 	}
+
+	twait { propagate(chain_id, id, false, mkevent(ret_val)); }
+}
+
+tamed void process_test_and_set(svccb * sbp) {
+	tvars {
+		test_and_set_arg parg;
+		ID_Value id;
+		ID_Value chain_id;
+		key_iter it;
+		ring_iter parent_ptr;
+		key_meta wrt;
+		bool ret_val;
+		ptr<chain_meta> chain_info;
+	}
+
+	parg = *(sbp->getarg<test_and_set_arg>());
+	if(BUG) warn << "Got TEST_AND_SET Request\n";
+	id.set_from_rpc(parg.id);
+	chain_id.set_from_rpc(parg.chain);
+
+	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+	if(chain_info == NULL) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//Reject writes unless we can form a chain
+	if(ring.size() < chain_info->chain_size) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//Reject if first data center is not us
+	if(chain_info->data_centers[0] != datacenter) {
+		sbp->replyref(false);
+		return;
+	}
+
+	it = key_meta_list.find(id);
+
+	//If key does not exist already or we're not the head, reject the request
+	if(it == key_meta_list.end() || !(it->second).is_head ) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//If requested version is not the latest committed version, just reject
+	if(parg.ver != (it->second).committed) {
+		sbp->replyref(false);
+		return;
+	}
+
+	//Turn the test-and-set into a normal write and propagate
+	wrt = it->second;
+	wrt.max_pending++;
+	wrt.pending_list[wrt.max_pending] = parg.data;
+	wrt.write_reqs[wrt.max_pending].push_back(sbp);
+	wrt.chain_id = chain_id;
+	key_meta_list[id] = wrt;
 
 	twait { propagate(chain_id, id, false, mkevent(ret_val)); }
 }
@@ -1330,6 +1395,9 @@ void rpc_server::dispatch(svccb * sbp) {
 			break;
  		case HEAD_WRITE:
  			process_head_write(sbp);
+ 			break;
+ 		case TEST_AND_SET:
+ 			process_test_and_set(sbp);
  			break;
  		case PROPAGATE:
  			process_propagate(sbp);
