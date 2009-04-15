@@ -23,6 +23,8 @@ int NUM_SECS;
 string CHAIN_NAME;
 string KEY_NAME;
 unsigned int CHAIN_SIZE;
+unsigned int MSGS_PER_SEC;
+unsigned long WINDOW_SIZE;
 
 typedef enum { READ, WRITE } ev_t;
 typedef callback<void, string>::ref cbstr;
@@ -156,7 +158,7 @@ tamed static void add_chain(ID_Value * id, int chain_size, cb_addchain cb) {
 	TRIGGER(cb, add_ret);
 }
 
-tamed static void test_and_set(ID_Value * chain_id, ID_Value * id, unsigned int ver, cbb cb) {
+tamed static void test_and_set(ID_Value * chain_id, ID_Value * id, unsigned int ver, blob data, cbb cb) {
 
 	tvars {
 		ring_iter succ;
@@ -171,11 +173,11 @@ tamed static void test_and_set(ID_Value * chain_id, ID_Value * id, unsigned int 
 	}
 
 	succ = ring_succ(*id);
-	it = keys.find(*id);
+	/*it = keys.find(*id);
 	if(it == keys.end()) {
 		TRIGGER(cb, false);
 		return;
-	}
+	}*/
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
@@ -191,7 +193,7 @@ tamed static void test_and_set(ID_Value * chain_id, ID_Value * id, unsigned int 
 
 	wrt_arg.chain = chain_id->get_rpc_id();
 	wrt_arg.id = id->get_rpc_id();
-	wrt_arg.data = it->second;
+	wrt_arg.data = data; //it->second;
 	wrt_arg.ver = ver;
 	twait {	cli->call(TEST_AND_SET, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
@@ -295,6 +297,62 @@ tamed static void get_key(ID_Value * chain_id, ID_Value * id, cb_get cb) {
 	TRIGGER(cb, to_ret);
 }
 
+tamed static void op(ID_Value * chain_id, ID_Value * id, cbv cb) {
+	tvars {
+		ptr<tail_read_ex_ret> get_ret;
+		timeval start_time;
+		timeval end_time;
+		long sec_diff;
+		long usec_diff;
+		bool bret;
+		unsigned int cur_ver;
+		unsigned int cur_val;
+		int i;
+	}
+	gettimeofday(&start_time, NULL);
+
+
+	bret = false;
+	while(!bret) {
+
+		get_ret = NULL;
+		while(get_ret == NULL) {
+			twait { get_key(chain_id, id, mkevent(get_ret)); }
+		}
+
+		if(get_ret->data.size() != 4) {
+			fatal << "Got a value back that was not 4 bytes!\n";
+		}
+
+		cur_ver = get_ret->ver;
+		for(i=0; i<4; i++) {
+			*((char *)&cur_val + i) = get_ret->data[i];
+		}
+		cur_val++;
+		for(i=0; i<4; i++) {
+			get_ret->data[i] = *((char *)&cur_val + i);
+		}
+
+		twait { test_and_set(chain_id, id, cur_ver, get_ret->data, mkevent(bret)); }
+
+	}
+
+	gettimeofday(&end_time, NULL);
+	warn << "W\t";
+	warn << end_time.tv_sec << "\t" << end_time.tv_usec << "\t";
+	sec_diff = end_time.tv_sec - start_time.tv_sec;
+	if(sec_diff == 0) {
+		usec_diff = end_time.tv_usec - start_time.tv_usec;
+	} else {
+		usec_diff = (1000000 - start_time.tv_usec) + end_time.tv_usec;
+		sec_diff--;
+		sec_diff += (usec_diff / 1000000);
+		usec_diff = usec_diff % 1000000;
+	}
+	warn << sec_diff << "\t" << usec_diff << "\n";
+	TRIGGER(cb);
+}
+
 tamed static void run_test() {
 
 	tvars {
@@ -331,8 +389,9 @@ tamed static void run_test() {
 		fatal << "Got failure for ADD_CHAIN\n";
 	}
 
+	get_ret = NULL;
 	twait { get_key(&chain_id, &id, mkevent(get_ret)); }
-	if(get_ret == NULL) {
+	if(get_ret == NULL || get_ret->data.size() == 0) {
 		twait { set_key(&chain_id, &id, mkevent(ret)); }
 		if(!ret) {
 			fatal << "Got failure for initial key write\n";
@@ -344,7 +403,7 @@ tamed static void run_test() {
 			*((char *)&init_val + i) = get_ret->data[i];
 		}
 	} else {
-		fatal << "Got a value back that was not 4 bytes!\n";
+		fatal << "Got a value back that was not 4 bytes! It was " << get_ret->data.size() << "\n";
 	}
 
 	srand(time(NULL));
@@ -352,9 +411,30 @@ tamed static void run_test() {
 	start_time = cur_time;
 	last_time = start_time;
 
+	wait_time = 1000000000 / MSGS_PER_SEC;
+
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
-	twait { test_and_set(&chain_id, &id, cur_ver, mkevent(ret)); }
+	nsent = 0;
+	nrecv = 0;
+	if(MSGS_PER_SEC != 0) {
+		wait_time = 1000000000 / MSGS_PER_SEC;
+	}
+	while ( time_diff(start_time, cur_time) < NUM_SECS ) {
+		gettimeofday(&cur_time, NULL);
+		if(MSGS_PER_SEC == 0) {
+			twait { op(&chain_id, &id, mkevent()); }
+		} else if(MSGS_PER_SEC != -1) {
+			op(&chain_id, &id, wrap(nothing));
+			twait{ delaycb(0, wait_time, mkevent()); }
+		} else if((nsent-nrecv) < WINDOW_SIZE) {
+			op(&chain_id, &id, mkevent(rv, 0));
+			nsent++;
+		} else {
+			twait(rv, i);
+			nrecv++;
+		}
+	}
 
 	exit(0);
 }
@@ -521,6 +601,10 @@ tamed static void main2(int argc, char **argv) {
 		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chain within the data center", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
 
+		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read or write (if 0, next operation will be run when previous completes)", false, -1, "int");
+		TCLAP::ValueArg<int> wndSize("w", "window_size", "Maximum window size of outstanding requests", false, -1, "int");
+		cmd.xorAdd(msgsPerSec, wndSize);
+
 		cmd.parse(argc, argv);
 
 		zookeeper_list = zooKeeperList.getValue();
@@ -529,6 +613,8 @@ tamed static void main2(int argc, char **argv) {
 		KEY_NAME = keyName.getValue();
 		CHAIN_SIZE = chainSize.getValue();
 		NUM_SECS = numSecs.getValue();
+		MSGS_PER_SEC = msgsPerSec.getValue();
+		WINDOW_SIZE = wndSize.getValue();
 	}
 	catch (TCLAP::ArgException &e)  // catch any exceptions
 	{

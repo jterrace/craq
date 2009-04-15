@@ -21,7 +21,7 @@
 #include "zoo_craq.H"
 #include <tclap/CmdLine.h>
 
-#define BUG 1
+#define BUG 0
 
 
 using namespace CryptoPP;

@@ -341,6 +341,8 @@ tamed static void run_test() {
 
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
+	nsent = 0;
+	nrecv = 0;
 	if(MSGS_PER_SEC != 0) {
 		wait_time = 1000000000 / MSGS_PER_SEC;
 	}
