@@ -1,4 +1,4 @@
-#include "connection_pool.H"
+#include "connection_pool.TH"
 
 const u_int NUM_POOLS = 1;
 u_int glob_pool = 0;

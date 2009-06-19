@@ -14,7 +14,7 @@
 #include "../ID_Value.h"
 #include <tclap/CmdLine.h>
 #include "../zoo_craq.h"
-#include "connection_pool.H"
+#include "connection_pool.TH"
 
 using namespace CryptoPP;
 using namespace std;

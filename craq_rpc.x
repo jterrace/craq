@@ -115,14 +115,14 @@ struct test_and_set_arg {
  
 program CHAIN_NODE {
 	version CHAIN_NODE_VERSION {
- 		//External functions
+ 		/*External functions*/
  		blob TAIL_READ(rpc_hash) = 0;   /* TODO: tail_read_arg */
  		bool HEAD_WRITE(head_write_arg) = 1;
   		tail_read_ex_ret TAIL_READ_EX(tail_read_ex_arg) = 8;
   		add_chain_ret ADD_CHAIN(add_chain_arg) = 9;
   		bool TEST_AND_SET(test_and_set_arg) = 10;
  		
- 		//Internal functions
+ 		/*Internal functions*/
  		bool PROPAGATE(propagate_arg) = 2;
  		query_obj_ver_ret QUERY_OBJ_VER(rpc_hash) = 3;  /* TODO: query_obj_ver_arg */
  		bool ACK(ack_arg) = 4;

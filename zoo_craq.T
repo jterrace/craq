@@ -1,4 +1,4 @@
-#include "zoo_craq.H"
+#include "zoo_craq.TH"
 
 ptr<callback<void, bool> > init_cb;
 string my_zoo_id;

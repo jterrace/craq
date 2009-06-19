@@ -16,9 +16,9 @@
 #include "Node.h"
 #include "MemStorage.h"
 #include "Storage.h"
-#include "connection_pool.H"
+#include "connection_pool.TH"
 #include "zookeeper.h"
-#include "zoo_craq.H"
+#include "zoo_craq.TH"
 #include <tclap/CmdLine.h>
 
 #define BUG 0

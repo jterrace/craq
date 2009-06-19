@@ -11,7 +11,7 @@
 #include "../craq_rpc.h"
 #include "../Node.h"
 #include "../ID_Value.h"
-#include "../connection_pool.H"
+#include "../connection_pool.TH"
 #include <tclap/CmdLine.h>
 #include "../zoo_craq.h"
 
