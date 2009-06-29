@@ -3,6 +3,7 @@
 ptr<callback<void, bool> > init_cb;
 string my_zoo_id;
 int zoo_node_count = 0;
+bool zoo_connected = false;
 map<string, Node> zoo_nodes;
 zhandle_t * zh;
 map<int, timecb_t *> read_timeouts;
@@ -23,7 +24,7 @@ void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* c
         } else if (state == ZOO_EXPIRED_SESSION_STATE) {
             fatal << "ZooKeeper session expired.\n";
         } else if (state == ZOO_CONNECTING_STATE ) {
-        	warn << "Connecting to ZooKeeper...\n";
+            warn << "Connecting to ZooKeeper...\n";
         } else if (state == ZOO_ASSOCIATING_STATE) {
 			warn << "Associating ZooKeeper connection...\n";
         }
@@ -102,6 +103,8 @@ void czoo_interest() {
 	timeval tv;
 	int ret = zookeeper_interest(zh, &fd, &interest, &tv);
 	if(ret != ZOK) {
+                if (ret == ZCONNECTIONLOSS)
+                  fatal << "Lost connection to zookeeper";
 		fatal << "Bad return from interest!\n";
 	}
 	if (fd != -1) {
@@ -163,6 +166,7 @@ czoo_init(const char * host, ptr<callback<void, bool> > cb, ZooLogLevel log_leve
 	if(!zh) {
 		TRIGGER( cb, false );
 	}
+        zoo_connected = true;
 	czoo_interest_timer();
 }
 

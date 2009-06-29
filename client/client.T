@@ -177,7 +177,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
 		add_arg.id = id.get_rpc_id();
-		add_arg.chain_size = 3;
+		add_arg.chain_size = ring.size();
 		add_arg.data_centers.setsize(1);
 		add_arg.data_centers[0] = datacenter.c_str();
 
