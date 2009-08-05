@@ -534,7 +534,7 @@ tamed static void node_list_watcher(string path) {
 
 }
 
-tamed static void connect_to_manager(str h, int port, cbv cb) {
+tamed static void connect_to_manager(string zoo_list, cbv cb) {
 	tvars {
 		ostringstream ss;
 		bool rc;
@@ -546,8 +546,7 @@ tamed static void connect_to_manager(str h, int port, cbv cb) {
 		Node new_node;
 	}
 
-	ss << h << ":" << port;
-	twait { czoo_init( ss.str().c_str(), mkevent(rc), ZOO_LOG_LEVEL_ERROR); }
+	twait { czoo_init( zoo_list.c_str(), mkevent(rc), ZOO_LOG_LEVEL_ERROR); }
 	if(!rc) {
 		fatal << "Couldn't initialize ZooKeeper. Dying.\n";
 	}
@@ -587,9 +586,8 @@ tamed static void connect_to_manager(str h, int port, cbv cb) {
 tamed static void main2(int argc, char **argv) {
 	tvars {
 		int listen_port;
-		str manager_hostname;
+		string zookeeper_list;
 		str type;
-		int manager_port;
 		str user_ip;
 		str data_center;
 	}
@@ -597,15 +595,13 @@ tamed static void main2(int argc, char **argv) {
 	try
 	{
 		TCLAP::CmdLine cmd("client starts a CRAQ client which listens for commands on a socket and translates them to CRAQ RPC format", ' ', "0.2");
-		TCLAP::ValueArg<string> managerHost("o", "manager_host", "Manager hostname", true, "", "string", cmd);
-		TCLAP::ValueArg<int> managerPort("r", "manager_port", "Manager port number", true, 0, "int", cmd);
+		TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, "", "string", cmd);
 		TCLAP::ValueArg<int> listenPort("p", "listen_port", "Port to listen for connections", true, 0, "int", cmd);
 		TCLAP::ValueArg<string> ipAddress("i", "ip_address", "IP Address to listen for connections", false, "", "string", cmd);
 		TCLAP::ValueArg<string> dataCenter("d", "data_center", "Datacenter name", true, "", "string", cmd);
 		cmd.parse(argc, argv);
 
-		manager_hostname = managerHost.getValue().c_str();
-		manager_port = managerPort.getValue();
+		zookeeper_list = zooKeeperList.getValue();
 		listen_port = listenPort.getValue();
 		user_ip = ipAddress.getValue().c_str();
 		data_center = dataCenter.getValue().c_str();
@@ -617,7 +613,7 @@ tamed static void main2(int argc, char **argv) {
 
 	datacenter = data_center.cstr();
 	warn << "Initializing...";
-	twait { connect_to_manager(manager_hostname, manager_port, mkevent()); }
+	twait { connect_to_manager(zookeeper_list, mkevent()); }
 	warn << " Done.\n";
 
 	listen_loop(listen_port);
