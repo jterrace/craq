@@ -170,7 +170,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, "ERROR " + key + "\r\n");
 		return;
 	}
 
@@ -183,7 +183,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 		twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
 		if(e || add_ret == ADD_CHAIN_FAILURE) {
-			TRIGGER(cb, "ERROR\r\n");
+			TRIGGER(cb, "ERROR " + key + "\r\n");
 			return;
 		}
 	}
@@ -193,11 +193,11 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 	wrt_arg.data = data;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
-		TRIGGER(cb, "ERROR\r\n");
+		TRIGGER(cb, "ERROR " + key + "\r\n");
 		return;
 	}
 
-	TRIGGER(cb, "STORED\r\n");
+	TRIGGER(cb, "STORED " + key + "\r\n");
 }
 
 tamed static void get_key(string key, cbblob cb) {
@@ -221,7 +221,7 @@ tamed static void get_key(string key, cbblob cb) {
 
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
-		TRIGGER(cb, make_blob("NOT_FOUND\r\n"));
+		TRIGGER(cb, make_blob(("NOT_FOUND " + key + "\r\n").c_str()));
 		return;
 	}
 
@@ -233,7 +233,7 @@ tamed static void get_key(string key, cbblob cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, make_blob("ERROR\r\n"));
+		TRIGGER(cb, make_blob(("ERROR " + key + "\r\n").c_str()));
 		return;
 	}
 	arg.id = id.get_rpc_id();
@@ -241,11 +241,11 @@ tamed static void get_key(string key, cbblob cb) {
 	arg.dirty = false;
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
-		TRIGGER(cb, make_blob("ERROR\r\n"));
+		TRIGGER(cb, make_blob(("ERROR " + key + "\r\n").c_str()));
 		return;
 	}
 
-	out << "VALUE " << ret.data.size() << "\r\n";
+	out << "VALUE " << key << " " << ret.data.size() << "\r\n";
 
 	to_ret = make_blob(out.str().c_str());
 

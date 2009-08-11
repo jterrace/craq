@@ -1,0 +1,25 @@
+0.2.1
+=====
+ - SVN Revision 1482
+ - Added support for multiple ZooKeeper servers to ASCII router client
+ - Changed ASCII router client to also return key in response
+ - Added 'make dist' to makefile to creeate package
+ 
+0.2.0
+========
+ - SVN Revision 1283
+ - Uses ZooKeeper as a manager
+ - Multi datacenter mostly broken
+ - Test and set implemented
+ - Added an ASCII router client
+ - Added Darwin compiling support to Makefile
+
+0.1
+========
+ - SVN Revision 296
+ - Standalone, simple manager
+ - Single datacenter
+ - Write, Read implemented
+ - Failure recovery implemented
+ 
+ 

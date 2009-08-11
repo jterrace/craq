@@ -20,9 +20,7 @@
 #include "zookeeper.h"
 #include "zoo_craq.TH"
 #include <tclap/CmdLine.h>
-
-#define BUG 0
-
+#include "logging/debug.h"
 
 using namespace CryptoPP;
 using namespace std;

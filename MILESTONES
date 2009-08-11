@@ -1,9 +1,0 @@
-CRAQ 0.1
-========
- - SVN Revision 296
- - Standalone, simple manager
- - Single datacenter
- - Write, Read implemented
- - Failure recovery implemented
- 
- 

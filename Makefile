@@ -39,6 +39,7 @@ OBJS=craq_rpc.o \
 
 all: manager \
 	chain_node \
+	chain_node_debug \
 	test/manager_test \
 	test/single_write_read \
 	test/multi_read_write \
@@ -50,6 +51,12 @@ all: manager \
 	test/transaction_tester \
 	client/client
 
+dist: all
+	mkdir -p craq-dist
+	cp chain_node craq-dist/craq-32
+	cp chain_node_debug craq-dist/craq-32-debug
+	cp client/client craq-dist/craq-router-32
+	tar -cvzf craq-dist-0.2.1.tar.gz craq-dist
 
 craq_rpc.o: craq_rpc.x
 	$(RPCC) -h -o craq_rpc.h craq_rpc.x
@@ -79,9 +86,16 @@ manager: manager.T $(OBJS)
 	$(CC) $(LFLAGS) -o manager manager.o $(OBJS) $(LIBS)
 	
 chain_node: chain_node.T $(OBJS)
+	ln -sf debug_off.h logging/debug.h
 	$(TAME) -o chain_node.TC chain_node.T
 	$(CC) $(INCLUDE) $(CFLAGS) -c chain_node.TC
 	$(CC) $(LFLAGS) -o chain_node chain_node.o $(OBJS) $(LIBS)
+	
+chain_node_debug: chain_node.T $(OBJS)
+	ln -sf debug_on.h logging/debug.h
+	$(TAME) -o chain_node_debug.TC chain_node.T
+	$(CC) $(INCLUDE) $(CFLAGS) -c chain_node_debug.TC
+	$(CC) $(LFLAGS) -o chain_node_debug chain_node_debug.o $(OBJS) $(LIBS)
 	
 test/manager_test: test/manager_test.T $(OBJS)
 	$(TAME) -o test/manager_test.TC test/manager_test.T
@@ -134,7 +148,8 @@ client/client: client/client.T $(OBJS)
 	$(CC) $(LFLAGS) -o client/client client/client.o $(OBJS) $(LIBS)
 	
 clean:
-	rm -f chain_node chain_node.TC\
+	rm -rf chain_node chain_node.TC \
+		chain_node_debug chain_node_debug.TC \
 		manager manager.TC \
 		craq_rpc.h craq_rpc.c \
 		Node.TC MemStorage.TC connection_pool.TC connection_pool.TH \
@@ -149,4 +164,6 @@ clean:
 		test/get_chain_info.TC test/get_chain_info \
 		test/transaction_tester.TC test/transaction_tester \
 		client/client client/client.TC client/client.o \
-		*.o test/*.o
+		logging/debug.h \
+		*.o test/*.o \
+		craq-dist-*.tar.gz craq-dist
