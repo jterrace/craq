@@ -105,6 +105,8 @@ void czoo_interest() {
 	if(ret != ZOK) {
                 if (ret == ZCONNECTIONLOSS)
                   fatal << "Lost connection to zookeeper";
+                if (ret == ZOPERATIONTIMEOUT) 
+                  fatal << "Timed out in connection to zookeeper";
 		fatal << "Bad return from interest!\n";
 	}
 	if (fd != -1) {
@@ -162,9 +164,10 @@ tamed void
 czoo_init(const char * host, ptr<callback<void, bool> > cb, ZooLogLevel log_level) {
 	init_cb = cb;
 	zoo_set_debug_level(log_level);
-	zh = zookeeper_init(host, &czoo_watcher, 1000, 0, 0, 0);
+	zh = zookeeper_init(host, &czoo_watcher, 5000, 0, 0, 0);
 	if(!zh) {
 		TRIGGER( cb, false );
+                return;
 	}
         zoo_connected = true;
 	czoo_interest_timer();

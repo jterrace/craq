@@ -49,7 +49,8 @@ all: manager \
 	test/read_write \
 	test/get_chain_info \
 	test/transaction_tester \
-	client/client
+	client/client\
+        client/craq_interface\
 
 dist: all
 	mkdir -p craq-dist
@@ -146,6 +147,11 @@ client/client: client/client.T $(OBJS)
 	$(TAME) -o client/client.TC client/client.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o client/client.o -c client/client.TC
 	$(CC) $(LFLAGS) -o client/client client/client.o $(OBJS) $(LIBS)
+
+client/craq_interface: client/craq_interface.T client/craq_interface.h $(OBJS)
+	$(TAME) -o client/craq_interface.TC client/craq_interface.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o client/craq_interface.o -c client/craq_interface.TC
+	$(CC) $(LFLAGS) -o client/craq_interface client/craq_interface.o $(OBJS) $(LIBS)
 	
 clean:
 	rm -rf chain_node chain_node.TC \
