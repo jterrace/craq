@@ -2,7 +2,7 @@ ARCH=$(shell uname)
 TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
 CC=g++
-STATIC=-static
+STATIC=#-static
 ifeq (Darwin,${ARCH})
 	STATIC=
 	CC=g++-4.2

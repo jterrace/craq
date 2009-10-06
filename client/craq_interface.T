@@ -1,3 +1,13 @@
+/*
+ * craq_interface.T
+ * author: Patrick Wendell
+ *
+ * A get/set interface to CRAQ to be used by Namecast. It doesn't really make
+ * sense to write this as a class since only one can exist at a time, but
+ * I need to learn C++... Also, this is basically a copy of client.T.
+ *
+ * */
+
 #include <string>
 #include <algorithm>
 #include <set>
@@ -14,55 +24,279 @@
 #include "../ID_Value.h"
 #include <tclap/CmdLine.h>
 #include "../zoo_craq.h"
+#include "../logging/debug.h"
 #include "connection_pool.TH"
 #include "craq_interface.h"
 
 using namespace std;
+using namespace CryptoPP;
 
-craq_interface::craq_interface() {}
+tamed static void craq_interface::watcher_wrapper(string path, void* context) {
+  craq_interface* my_iface = static_cast<craq_interface*>( context);
+  my_iface->node_list_watcher(path);
+}
+
+ID_Value get_sha1(string msg) {
+        byte buffer[SHA::DIGESTSIZE];
+        SHA().CalculateDigest(buffer, (byte *)msg.c_str(), msg.length());
+        ID_Value ret(buffer);
+        return ret;
+}
+
+craq_interface::craq_interface() {
+  zoo_connected = false;  
+}
 
 craq_interface::~craq_interface() {}
 
-tamed void craq_interface::init(string zoo_list) {
-  tvars {int success;}
-  twait {connect_to_manager(zoo_list, mkevent());}
-  twait {populate_node_list(mkevent(success));}
-  warn << "Result " << success;
+
+inline ring_iter craq_interface::ring_succ(ID_Value id) {
+  // Given an ID, find it's successor node in the ring
+  ring_iter it = ring.lower_bound(id);
+  if(it == ring.end())
+    it = ring.begin();
+    return it;
 }
 
-void craq_interface::set_key(string key, string val, cbstr) {}
+inline void craq_interface::ring_incr(ring_iter * it) {
+  // Increment position in ring
+  (*it)++;
+  if( (*it)==ring.end() ) {
+    (*it) = ring.begin();
+  }
+}
 
-void craq_interface::get_key(string key, cbstr) {}
 
-tamed void craq_interface::connect_to_manager(string zoo_list, cbv cb) {
+tamed void craq_interface::init(string zoo_list, bool strong, cbbool cb) {
   tvars {
-    bool success;
-    zoo_connected;
+    bool connect_success;
+    bool list_success;
   }
-  twait {
-    czoo_init(zoo_list.c_str(), mkevent(success), ZOO_LOG_LEVEL_ERROR);
+  this->strong_consistency = strong;
+  twait {connect_to_manager(zoo_list, mkevent(connect_success));}
+  twait {populate_node_list(mkevent(list_success));}
+  if (!(connect_success & list_success)) {
+    warn << "Error connecting to zookeeper\n";
+    TRIGGER(cb, false);
   }
-  if (!success) {
-    fatal << "Could not initialize ZooKeeper. Dying.\n";
-    zoo_connected = false;
+  TRIGGER(cb, true);
+}
+
+tamed void craq_interface::set_key(string key, string val, cbstr cb) {
+  return;
+}
+
+tamed void craq_interface::get_key(string key, cbstr cb) {
+  tvars {
+    ID_Value id;
+    ptr<chain_meta> chain_info;
+    ptr<aclnt> cli;
+    string out;
+    ring_iter succ;
+    clnt_stat e;
+    int rnd;
+    int fd;
+    tail_read_ex_arg arg; // arguments to tail read
+    tail_read_ex_ret ret; // return value from tail read
+  }
+
+  id = get_sha1(key);
+
+  twait{ get_chain_info(id, mkevent(chain_info)); }
+  
+  if (chain_info == NULL) {
+    TRIGGER(cb, "NOT FOUND: " + key + "\n");
     return;
   }
 
-  warn << "Connected to ZooKeeper";
-  zoo_connected = true;
-}
+  // Get start of chain
+  succ = ring_succ(id);
 
-tamed void craq_interface::populate_node_list(cbi cb) {
-  if (!zoo_connected) {
-    (*cb) (-1);
+  // Go to random point on chain
+  rnd = rand() % chain_info->chain_size;
+  for ( ; rnd > 0; rnd--) {
+    ring_incr(&succ);
+  } 
+
+  twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(),
+    &cli, &chain_node_1, mkevent(fd)); }
+
+  if (fd < 0) {
+    TRIGGER(cb, "ERROR");
+    return;
+  }
+  
+  arg.id = id.get_rpc_id();
+  arg.chain = id.get_rpc_id();
+  arg.dirty = !this->strong_consistency;
+
+  twait { cli->call(TAIL_READ_EX, &arg, &ret, mkevent(e)); }
+  if (e) {
+    TRIGGER(cb, "ERROR");
+    return;
   }
 
-  (*cb) (0);
+  for(int i=0; i<ret.data.size(); i++) {
+    out.push_back(ret.data[i]);
+  }
+
+  TRIGGER(cb, out);
+}
+
+tamed void craq_interface::connect_to_manager(string zoo_list, cbbool cb) {
+  tvars {
+    bool success;
+  }
+
+  twait {
+    czoo_init(zoo_list.c_str(), mkevent(success), ZOO_LOG_LEVEL_ERROR);
+  }
+
+  if (!success) {
+    warn << "Could not initialize ZooKeeper.\n";
+  }
+
+  TRIGGER(cb, success);
+}
+
+tamed void craq_interface::populate_node_list(cbbool cb) {
+  tvars {
+    vector<string> * node_list;
+    vector<string *> node_vals;
+    vector<ID_Value> ring_keys;
+    vector<Node> ring_vals;
+    string node_name;
+    string search_str;
+    Node new_node;
+  }
+  twait {
+    czoo_get_children_2("/nodes/data", &watcher_wrapper, this,
+      mkevent(node_list));
+  }
+  if (node_list == NULL) {
+    warn << "Erorr retreiving initial node list\n";
+    TRIGGER(cb, false);
+  }
+  else {
+    cerr << "Did retreive node list of size ";
+    cerr << (*node_list).size() << "\n";
+  }
+  node_vals.resize((*node_list).size());
+
+  // Get data for each node
+  twait {
+    for (int i=0; i < (*node_list).size(); i++) {
+      node_name = (*node_list)[i];
+      search_str = "/nodes/data/" + node_name;
+      czoo_get(search_str, mkevent(node_vals[i]));
+    }
+  }
+
+  // Assure value for each node
+  for (int i=0; i < node_vals.size(); i++) {
+    if (node_vals[i] == NULL) {
+      warn << "Error retreiving value for node " << 
+        (*node_list)[i].c_str() << "\n";
+      TRIGGER(cb, false);
+    }
+    else {
+      // Create a Node and add it to the ring
+      new_node.set_from_string(*node_vals[i]);
+      ring[new_node.getId()] = new_node;
+      zoo_nodes[(*node_list)[i]] = new_node;
+      delete node_vals[i];
+    }
+  }
+  delete node_list;
+  ring_init = true;
+  TRIGGER(cb, true);
+}
+
+tamed void craq_interface::node_list_watcher(string path) {
+  
+}
+
+tamed void craq_interface::get_chain_info(ID_Value chain_id, 
+  ptr<callback<void, ptr<chain_meta>>> cb) {
+  tvars {
+    ptr<chain_meta> ret;
+    map<ID_Value, chain_meta>::iterator it;
+    string* val;
+    istringstream iss;
+    string dc;
+  }
+
+  // check if chain meta-data cache
+  it = chain_meta_list.find(chain_id);
+  if (it != chain_meta_list.end()) {
+    ret = New refcounted<chain_meta>;
+    *ret = it->second;
+    TRIGGER(cb, ret); 
+    return;
+  }
+
+  // if not in cache, get data from zookeeper
+  twait {
+    czoo_get("/keys/" + chain_id.toString(), mkevent(val));
+  }
+
+  if (val == NULL) {
+    if (BUG) cout << "Could not find key " << chain_id.toString() << "\n";
+    ret = NULL;
+    TRIGGER(cb, ret);
+    return;
+  }
+  // create chain_meta struct and return
+  ret = New refcounted<chain_meta>;
+  iss.str(*val);
+  delete val;
+  if (!(iss >> ret->chain_size)) {
+    if (BUG) warn << "Got bad value back from zookeeper chain node!\n";
+    TRIGGER(cb, ret);
+    return;
+  }
+  if (iss.eof()) {
+    if (BUG) {
+      warn << "Got no data centers for chain: ";
+      warn << chain_id.toString().c_str();
+    }
+  }
+  while (!iss.eof()) {
+    iss >> dc;
+    ret->data_centers.push_back(dc);
+  }
+
+  chain_meta_list[chain_id] = *ret;
+  TRIGGER(cb, ret);
 }
 
 tamed static void main2() {
-  craq_interface iface;
-  iface.init("192.168.1.1:394");
+  tvars{
+    craq_interface iface;
+    string zoo_list;
+    bool init_success;
+    string result; 
+  }
+  zoo_list = "127.0.0.1:2181";
+  warn << "Interface created, attempting to connect\n"; 
+ 
+  twait {
+    iface.init(zoo_list, false, mkevent(init_success));
+  }
+
+  if (init_success) {
+    warn << "Connection established.\n";
+  }
+  else {
+    warn << "Connection establishemnt failed.\n";
+  }
+
+  twait {
+    iface.get_key("patrick", mkevent(result));    
+  }
+
+  cout << "Result: " << result << "\n.";
+  exit(0);
 }
 
 int main() {

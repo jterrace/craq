@@ -550,7 +550,6 @@ tamed static void connect_to_manager(string zoo_list, cbv cb) {
 	if(!rc) {
 		fatal << "Couldn't initialize ZooKeeper. Dying.\n";
 	}
-
 	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
 	if(node_list == NULL) {
 		fatal << "Error retrieving initial node list!\n";

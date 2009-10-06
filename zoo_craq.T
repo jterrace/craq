@@ -12,13 +12,17 @@ map<int, timecb_t *> write_timeouts;
 map<int, ptr<callback<void, int> > > czoo_create_cbs;
 map<int, ptr<callback<void, vector<string> *> > > czoo_get_children_cbs;
 map<string, czoo_get_children_watcher> czoo_get_children_watches;
+// Watcher functions with context info
+map<string, czoo_get_children_watcher_ctx> czoo_get_children_watches_ctx;
+map<string, void*> czoo_get_children_contexts;
 map<int, ptr<callback<void, string *> > > czoo_get_cbs;
+
 
 void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* context) {
     if (type == ZOO_SESSION_EVENT) {
         if (state == ZOO_CONNECTED_STATE) {
         	//warn << "Connected to ZooKeeper.\n";
-        	TRIGGER( init_cb, true );
+        	TRIGGER(init_cb, true);
         } else if (state == ZOO_AUTH_FAILED_STATE) {
             fatal << "ZooKeeper Authentication failed.\n";
         } else if (state == ZOO_EXPIRED_SESSION_STATE) {
@@ -38,8 +42,14 @@ void czoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void* c
     	string the_path = path;
     	map<string, czoo_get_children_watcher>::iterator it = czoo_get_children_watches.find(the_path);
     	if(it != czoo_get_children_watches.end()) {
-    		(it->second)(the_path, NULL);
+          (it->second)(the_path, NULL);
     	}
+        map<string, czoo_get_children_watcher_ctx>::iterator it2 = czoo_get_children_watches_ctx.find(the_path);
+        if(it2 != czoo_get_children_watches_ctx.end()) {
+          (it2->second)(the_path, czoo_get_children_contexts[the_path], NULL);
+        }
+
+
     } else if( type == ZOO_NOTWATCHING_EVENT ) {
 
     }
@@ -218,6 +228,7 @@ czoo_create( string path, string value, const struct ACL_vector *acl, int flags,
 
 void czoo_got_children(int rc, const struct String_vector *strings, const void *data) {
 	int * where = (int *)data;
+        //warn << "Got children.";
 	map<int, ptr<callback<void, vector<string> *> > >::iterator it = czoo_get_children_cbs.find(*where);
 	if(it != czoo_get_children_cbs.end()) {
 		if (rc!=ZOK || !strings) {
@@ -259,6 +270,33 @@ tamed void czoo_get_children(string path, czoo_get_children_watcher func,
     	delete where;
     }
 }
+
+tamed void czoo_get_children_2(string path, czoo_get_children_watcher_ctx func, void* context, ptr<callback<void, vector<string> *> > cb) {
+        int watch = 0;
+        if(func != NULL) {
+                watch = 1;
+                czoo_get_children_watches_ctx[path] = func;
+                czoo_get_children_contexts[path] = context;
+        }
+
+    int * where = new int;
+        if(czoo_get_children_cbs.size()==0) {
+        *where = 0;
+    } else {
+        map<int, ptr<callback<void, vector<string> *> > >::iterator it = czoo_get_children_cbs.end();
+        it--;
+        *where = it->first + 1;
+    }
+        czoo_get_children_cbs[*where] = cb;
+
+    int rc = zoo_aget_children(zh, path.c_str(), watch, &czoo_got_children, where);
+    if(rc) {
+        czoo_get_children_cbs.erase(*where);
+        TRIGGER( cb, NULL );
+        delete where;
+    }
+}
+
 
 void czoo_got(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) {
 	int * where = (int *)data;

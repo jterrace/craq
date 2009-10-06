@@ -39,11 +39,16 @@ extern void czoo_create( string path, string value, const struct ACL_vector *acl
 extern void czoo_created(int rc, const char *name, const void *data);
 
 typedef void (*czoo_get_children_watcher)(string, ptr<closure_t>);
+typedef void (*czoo_get_children_watcher_ctx)(string, void*, ptr<closure_t>);
 extern map<int, ptr<callback<void, vector<string> *> > > czoo_get_children_cbs;
 extern map<string, czoo_get_children_watcher> czoo_get_children_watches;
+extern map<string, czoo_get_children_watcher_ctx> czoo_get_children_watches_ctx;
 extern void czoo_got_children(int rc, const struct String_vector *strings, const void *data);
 extern void czoo_get_children(string path, czoo_get_children_watcher func,
 								ptr<callback<void, vector<string> *> > cb, CLOSURE);
+extern void czoo_get_children_2(string path, czoo_get_children_watcher_ctx func,
+void* context, ptr<callback<void, vector<string> *> > cb, CLOSURE);
+
 
 extern map<int, ptr<callback<void, string *> > > czoo_get_cbs;
 extern void czoo_got(int rc, const char *value, int value_len, const struct Stat *stat, const void *data);
