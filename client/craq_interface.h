@@ -1,6 +1,18 @@
-using namespace std;
+#include <string>
+#include <map>
+#include <vector>
+#include "zookeeper.h"
+#include "tame.h"
+#include "tame_rpcserver.h"
+#include "parseopt.h"
+#include "arpc.h"
+#include "async.h"
+#include "../ID_Value.h"
+#include "../Node.h"
 
+using namespace std;
 typedef callback<void, string>::ref cbstr;
+typedef callback<void, str>:: ref cbs;
 typedef callback<void, bool>::ref cbbool;
 typedef enum { READ, WRITE } ev_t;
 typedef map<ID_Value, Node>::iterator ring_iter;
@@ -19,10 +31,10 @@ class craq_interface {
   public:
     craq_interface();
     ~craq_interface();
-    void init(string zoo_list, bool strong, cbbool cb, CLOSURE);
+    void init(string zoo_list, cbbool cb, CLOSURE);
 
-    void set_key(string key, string val, cbstr cb, CLOSURE);
-    void get_key(string key, cbstr cb, CLOSURE);
+    void set_key(string key, const char* data, int data_length, cbstr cb, CLOSURE);
+    void get_key(string key, cbs cb, CLOSURE);
 
   private:
     ring_iter ring_succ(ID_Value id);

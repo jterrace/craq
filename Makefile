@@ -2,7 +2,7 @@ ARCH=$(shell uname)
 TAME=/usr/local/lib/sfslite/tame
 RPCC=/usr/local/lib/sfslite/rpcc
 CC=g++
-STATIC=#-static
+STATIC=-static
 ifeq (Darwin,${ARCH})
 	STATIC=
 	CC=g++-4.2
@@ -35,7 +35,7 @@ OBJS=craq_rpc.o \
 		Node.o \
 		MemStorage.o \
 		connection_pool.o \
-		zoo_craq.o
+		zoo_craq.o \
 
 all: manager \
 	chain_node \
@@ -50,7 +50,7 @@ all: manager \
 	test/get_chain_info \
 	test/transaction_tester \
 	client/client\
-        client/craq_interface\
+	client/craq_interface.o\
 
 dist: all
 	mkdir -p craq-dist
@@ -148,11 +148,25 @@ client/client: client/client.T $(OBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) -o client/client.o -c client/client.TC
 	$(CC) $(LFLAGS) -o client/client client/client.o $(OBJS) $(LIBS)
 
-client/craq_interface: client/craq_interface.T client/craq_interface.h $(OBJS)
+client/craq_interface.o: client/craq_interface.T client/craq_interface.h $(OBJS)
 	$(TAME) -o client/craq_interface.TC client/craq_interface.T
 	$(CC) $(INCLUDE) $(CFLAGS) -o client/craq_interface.o -c client/craq_interface.TC
-	$(CC) $(LFLAGS) -o client/craq_interface client/craq_interface.o $(OBJS) $(LIBS)
-	
+	#$(CC) $(LFLAGS) -o client/craq_interface client/craq_interface.o $(OBJS) $(LIBS)
+
+namecast/dns_rpc_test: namecast/dns_rpc_test.T namecast/data_types.o $(OBJS)\
+                       client/craq_interface.o
+	$(TAME) -o namecast/dns_rpc_test.TC namecast/dns_rpc_test.T
+	$(CC) $(INCLUDE) $(CFLAGS) -o namecast/dns_rpc_test.o \
+                                   -c namecast/dns_rpc_test.TC
+	$(CC) $(LFLAGS) -o namecast/dns_rpc_test namecast/dns_rpc_test.o \
+                        namecast/data_types.o client/craq_interface.o $(OBJS) $(LIBS)
+
+namecast/data_types:
+	$(RPCC) -h -o namecast/data_types.h namecast/data_types.x
+	$(RPCC) -c -o namecast/data_types.c namecast/data_types.x
+	$(CC) $(INCLUDE) $(CFLAGS) -c namecast/data_types.c -o namecast/data_types.o
+
+
 clean:
 	rm -rf chain_node chain_node.TC \
 		chain_node_debug chain_node_debug.TC \

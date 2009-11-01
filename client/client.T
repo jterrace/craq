@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <set>
 #include <ctime>
+#include <cstring>
 #include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
@@ -32,9 +33,12 @@ struct chain_meta {
 	vector<string> data_centers;
 };
 map<ID_Value, chain_meta> chain_meta_list;
+map<char, char> hex_map;
+
 
 blob make_blob(const char * str) {
 	blob to_ret;
+        bzero(&to_ret, sizeof(blob));
 	to_ret.setsize(strlen(str));
 	for(int i=0; i<strlen(str); i++) {
 		to_ret[i] = str[i];
@@ -140,9 +144,9 @@ tamed static void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain
 		iss >> dc;
 		ret->data_centers.push_back(dc);
 	}
-	if(ret->data_centers.size() < 1) {
-		fatal << "Got no data centers back from zookeeper chain node!\n";
-	}
+	//if(ret->data_centers.len() < 1) {
+	//	fatal << "Got no data centers back from zookeeper chain node!\n";
+	//}
 
 	chain_meta_list[chain_id] = *ret;
 	TRIGGER(cb, ret);
@@ -221,7 +225,7 @@ tamed static void get_key(string key, cbblob cb) {
 
 	twait{ get_chain_info(id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
-		TRIGGER(cb, make_blob(("NOT_FOUND " + key + "\r\n").c_str()));
+		TRIGGER(cb, make_blob("NOT_FOUND\r\n"));
 		return;
 	}
 
@@ -245,10 +249,10 @@ tamed static void get_key(string key, cbblob cb) {
 		return;
 	}
 
-	out << "VALUE " << key << " " << ret.data.size() << "\r\n";
+	out << "VALUE " << ret.data.size() << "\r\n";
 
 	to_ret = make_blob(out.str().c_str());
-
+	
 	rnd = to_ret.size();
 	to_ret.setsize(to_ret.size() + ret.data.size() + 2);
 	for(i=rnd; i<rnd + ret.data.size(); i++) {
@@ -279,10 +283,13 @@ tamed static void send_blob(int fd, blob bin_data, cbb cb) {
 	tvars {
 		strbuf data;
 		int i;
+                int fd2;
+                strbuf filename;
 	}
 	for(i=0; i<bin_data.size(); i++) {
 		data.tosuio()->copy(&bin_data[i], 1);
 	}
+        
 	while(data.tosuio()->resid()) {
 		twait { tame::waitwrite(fd, mkevent()); }
 		if(data.tosuio()->output(fd) < 0) {
@@ -327,7 +334,7 @@ tamed static void process(int fd)
 				tokens = tokenize(line);
 				if(tokens.size() == 3 && toLower(tokens[0])=="set") {
 					if(!convertint(tokens[2].c_str(), &byte_len) || byte_len < 0) {
-						twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
+						twait { send_str(fd, "ERROR Unable to discover data size\r\n", mkevent(ret)); }
 						if(!ret) {
 							break;
 						}
@@ -343,7 +350,7 @@ tamed static void process(int fd)
 						temp_buf = new char[byte_len+2];
 						resp.tosuio()->copyout(temp_buf, byte_len+2);
 						if(temp_buf[byte_len] != '\r' || temp_buf[byte_len+1] != '\n') {
-							twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
+							twait { send_str(fd, "ERROR Data not terminated with newline \r\n", mkevent(ret)); }
 							if(!ret) {
 								break;
 							}
@@ -368,13 +375,13 @@ tamed static void process(int fd)
 						break;
 					}
 				} else {
-					twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
+					twait { send_str(fd, "ERROR Invalid tokens:\r\n", mkevent(ret)); }
 					if(!ret) {
 						break;
 					}
 				}
 			} else {
-				twait { send_str(fd, "ERROR\r\n", mkevent(ret)); }
+				twait { send_str(fd, "ERROR Buffer size exceeded\r\n", mkevent(ret)); }
 				if(!ret) {
 					break;
 				}
@@ -614,6 +621,23 @@ tamed static void main2(int argc, char **argv) {
 	warn << "Initializing...";
 	twait { connect_to_manager(zookeeper_list, mkevent()); }
 	warn << " Done.\n";
+
+	hex_map[0x00] = '0';
+        hex_map[0x01] = '1';
+        hex_map[0x02] = '2';
+        hex_map[0x03] = '3';
+        hex_map[0x04] = '4';
+        hex_map[0x05] = '5';
+        hex_map[0x06] = '6';
+        hex_map[0x07] = '7';
+        hex_map[0x08] = '8';
+        hex_map[0x09] = '9';
+        hex_map[0x0a] = 'a';
+        hex_map[0x0b] = 'b';
+        hex_map[0x0c] = 'c';
+        hex_map[0x0d] = 'd';
+        hex_map[0x0e] = 'e';
+        hex_map[0x0f] = 'f';
 
 	listen_loop(listen_port);
 

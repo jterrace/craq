@@ -67,12 +67,11 @@ inline void craq_interface::ring_incr(ring_iter * it) {
 }
 
 
-tamed void craq_interface::init(string zoo_list, bool strong, cbbool cb) {
+tamed void craq_interface::init(string zoo_list, cbbool cb) {
   tvars {
     bool connect_success;
     bool list_success;
   }
-  this->strong_consistency = strong;
   twait {connect_to_manager(zoo_list, mkevent(connect_success));}
   twait {populate_node_list(mkevent(list_success));}
   if (!(connect_success & list_success)) {
@@ -82,16 +81,78 @@ tamed void craq_interface::init(string zoo_list, bool strong, cbbool cb) {
   TRIGGER(cb, true);
 }
 
-tamed void craq_interface::set_key(string key, string val, cbstr cb) {
-  return;
+tamed void craq_interface::set_key(string key, const char* data, int data_length, cbstr cb) {
+  tvars {
+    ID_Value id;
+    ring_iter succ;
+    ptr<aclnt> cli;
+    clnt_stat e;
+    ptr<chain_meta> chain_info;
+    add_chain_arg add_arg;
+    add_chain_ret add_ret;
+    head_write_arg wrt_arg;
+    blob to_write;
+    int fd;
+    bool rc; // TODO find out what this means
+  }
+
+  id = get_sha1(key);
+
+  // Who'se the head of this key
+  succ = ring_succ(id);
+
+  twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(),
+    &cli, &chain_node_1, mkevent(fd)); }
+
+  if (fd < 0) {
+    TRIGGER(cb, "ERROR\n");
+  }
+
+  twait { get_chain_info(id, mkevent(chain_info)); }
+
+  // If this is new, add a chain
+  if (chain_info == NULL) {
+    add_arg.id = id.get_rpc_id();
+    add_arg.chain_size = 3;
+    add_arg.data_centers.setsize(1);
+    add_arg.data_centers[0] = "data";
+  
+    // Add chain at the head
+    twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
+
+    if (e || add_ret == ADD_CHAIN_FAILURE) {
+      TRIGGER(cb, "ERROR\n");
+      return;
+    }
+  }
+
+  // Convert data to blob
+  to_write.setsize(data_length);
+  for (int i = 0; i < data_length; i++) {
+    to_write[i] = data[i];
+  }
+  if (BUG) cout << "Writing " << data_length << " bytes of data.\n";
+  wrt_arg.chain = id.get_rpc_id();
+  wrt_arg.id = id.get_rpc_id();
+  wrt_arg.data = to_write;
+ 
+  twait { cli->call(HEAD_WRITE, &wrt_arg, &rc, mkevent(e)); }
+  
+  if (e || !rc) {
+    TRIGGER(cb, "ERROR\n");
+    return;
+  }
+
+  TRIGGER(cb, "STORED!\n");
 }
 
-tamed void craq_interface::get_key(string key, cbstr cb) {
+tamed void craq_interface::get_key(string key, cbs cb) {
   tvars {
     ID_Value id;
     ptr<chain_meta> chain_info;
     ptr<aclnt> cli;
-    string out;
+    strbuf out_buf;
+    str out;
     ring_iter succ;
     clnt_stat e;
     int rnd;
@@ -105,7 +166,7 @@ tamed void craq_interface::get_key(string key, cbstr cb) {
   twait{ get_chain_info(id, mkevent(chain_info)); }
   
   if (chain_info == NULL) {
-    TRIGGER(cb, "NOT FOUND: " + key + "\n");
+    TRIGGER(cb, str(("NOT FOUND: " + key + "\n").c_str()));
     return;
   }
 
@@ -122,25 +183,21 @@ tamed void craq_interface::get_key(string key, cbstr cb) {
     &cli, &chain_node_1, mkevent(fd)); }
 
   if (fd < 0) {
-    TRIGGER(cb, "ERROR");
+    TRIGGER(cb, str("ERROR"));
     return;
   }
   
   arg.id = id.get_rpc_id();
   arg.chain = id.get_rpc_id();
-  arg.dirty = !this->strong_consistency;
+  arg.dirty = false;
 
   twait { cli->call(TAIL_READ_EX, &arg, &ret, mkevent(e)); }
   if (e) {
-    TRIGGER(cb, "ERROR");
+    TRIGGER(cb, str("ERROR"));
     return;
   }
-
-  for(int i=0; i<ret.data.size(); i++) {
-    out.push_back(ret.data[i]);
-  }
-
-  TRIGGER(cb, out);
+  if (BUG) cout << "Got object of size " << ret.data.size();
+  TRIGGER(cb, str((char*)&(ret.data[0]), ret.data.size()));
 }
 
 tamed void craq_interface::connect_to_manager(string zoo_list, cbbool cb) {
@@ -269,19 +326,20 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   chain_meta_list[chain_id] = *ret;
   TRIGGER(cb, ret);
 }
-
+/*
 tamed static void main2() {
   tvars{
     craq_interface iface;
     string zoo_list;
     bool init_success;
+    string set_result;
     string result; 
   }
   zoo_list = "127.0.0.1:2181";
   warn << "Interface created, attempting to connect\n"; 
  
   twait {
-    iface.init(zoo_list, false, mkevent(init_success));
+    iface.init(zoo_list, mkevent(init_success));
   }
 
   if (init_success) {
@@ -291,16 +349,16 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
 
-  twait {
-    iface.get_key("patrick", mkevent(result));    
-  }
+  twait {iface.set_key("patrick", "frattypants", mkevent(set_result));}
+  twait {iface.get_key("patrick", mkevent(result));}
 
   cout << "Result: " << result << "\n.";
   exit(0);
 }
-
+*/
+/*
 int main() {
   main2();
   amain();
 }
-
+*/
