@@ -4,8 +4,8 @@
  *
  * A get/set interface to CRAQ to be used by Namecast. It doesn't really make
  * sense to write this as a class since only one can exist at a time, but
- * I need to learn C++... Also, this is basically a copy of client.T.
- *
+ * I need to learn tame and  C++... Also, this is basically a copy of 
+ * client.T.
  * */
 
 #include <string>
@@ -326,7 +326,7 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   chain_meta_list[chain_id] = *ret;
   TRIGGER(cb, ret);
 }
-/*
+
 tamed static void main2() {
   tvars{
     craq_interface iface;
@@ -349,16 +349,15 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
 
-  twait {iface.set_key("patrick", "frattypants", mkevent(set_result));}
+  twait {iface.set_key("patrick", "foo", mkevent(set_result));}
   twait {iface.get_key("patrick", mkevent(result));}
 
   cout << "Result: " << result << "\n.";
   exit(0);
 }
-*/
-/*
+
 int main() {
   main2();
   amain();
 }
-*/
+
