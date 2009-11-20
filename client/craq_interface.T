@@ -350,7 +350,7 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   chain_meta_list[chain_id] = *ret;
   TRIGGER(cb, ret);
 }
-
+/*
 tamed static void main2() {
   tvars{
     craq_interface iface;
@@ -381,7 +381,7 @@ tamed static void main2() {
 }
 
 int main() {
-  main2();
+  //main2();
   amain();
 }
-
+*/

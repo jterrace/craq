@@ -21,6 +21,7 @@
 #include "arpc.h"
 #include "tame_rpcserver.h"
 #include "mysql_connection.h"
+#include "client/craq_interface.h"
 #include "cppconn/driver.h"
 #include "cppconn/connection.h"
 #include "cppconn/statement.h"
@@ -37,15 +38,16 @@
 #define MYSQL_USER "root"
 #define MYSQL_PASS "35500"
 #define MYSQL_HOST "unix:///var/run/mysqld/mysqld.sock"
+#define ZOO_LIST "127.0.0.1:2181"
 #define DEBUG 1
 
 using namespace std;
 using namespace sql;
 
-typedef enum { READ, WRITE } ev_t;
-const unsigned int MAX_BUF = 1000;
+const unsigned int MAX_BUFF = 1000;
 Connection* quova_conn;
 Connection* donar_conn;
+craq_interface craq;
 
 string last; // PDNS hack
 
@@ -87,30 +89,30 @@ int ClientRegion::get_hash() {
   return out;
 }
 
-# 88 "resolver.T"
+# 90 "resolver.T"
 static void  process( int fd, ptr<closure_t> __cls_g = NULL); 
-# 88 "resolver.T"
-class process__closure_t : public closure_t { public:   process__closure_t ( int fd) : closure_t ("resolver.T", "process"),  _stack (fd), _args (fd) {}   void reenter ()   {     process (_args.fd, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int fd) {}      strbuf resp;      strbuf out;      char buff[MAX_BUF];      int line_len;      string type;      string qname;      string qclass;      string qtype;      int id;      istringstream input;      string remote_ip;      string in;      string query;      string test;      Statement *stmt;      ResultSet *res;      bool init;   };   struct args_t {     args_t ( int fd) : fd (fd) {}      int fd;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 88 "resolver.T"
+# 90 "resolver.T"
+class process__closure_t : public closure_t { public:   process__closure_t ( int fd) : closure_t ("resolver.T", "process"),  _stack (fd), _args (fd) {}   void reenter ()   {     process (_args.fd, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int fd) {}      strbuf resp;      strbuf out;      char buff[MAX_BUFF];      int line_len;      string type;      string qname;      string qclass;      string qtype;      int id;      istringstream input;      string remote_ip;      string in;      string query;      string test;      Statement *stmt;      ResultSet *res;      bool init;   };   struct args_t {     args_t ( int fd) : fd (fd) {}      int fd;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 90 "resolver.T"
 void 
 process( int __tame_fd, ptr<closure_t> __cls_g)
 {
-# 88 "resolver.T"
+# 90 "resolver.T"
 
   
-# 89 "resolver.T"
+# 91 "resolver.T"
   process__closure_t *__cls;   ptr<process__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<process__closure_t> (__tame_fd);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<process__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    strbuf &resp = __cls->_stack.resp;    strbuf &out = __cls->_stack.out;    char *buff = __cls->_stack.buff;    int &line_len = __cls->_stack.line_len;    string &type = __cls->_stack.type;    string &qname = __cls->_stack.qname;    string &qclass = __cls->_stack.qclass;    string &qtype = __cls->_stack.qtype;    int &id = __cls->_stack.id;    istringstream &input = __cls->_stack.input;    string &remote_ip = __cls->_stack.remote_ip;    string &in = __cls->_stack.in;    string &query = __cls->_stack.query;    string &test = __cls->_stack.test;    Statement *&stmt = __cls->_stack.stmt;    ResultSet *&res = __cls->_stack.res;    bool &init = __cls->_stack.init;    int &fd = __cls->_args.fd;    use_reference (fd);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto process__label_1;     break;   case 2:     goto process__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 107 "resolver.T"
+# 109 "resolver.T"
 
   while (true) {
     
-# 109 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 109);     __cls->set_jumpto (1); 
-# 109 "resolver.T"
+# 111 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 111);     __cls->set_jumpto (1); 
+# 111 "resolver.T"
  tame::waitread (fd, mkevent()); 
-# 109 "resolver.T"
+# 111 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_1:       ;   } while (0);
-# 109 "resolver.T"
+# 111 "resolver.T"
 
     if ( (resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
       break;
@@ -154,13 +156,13 @@ process( int __tame_fd, ptr<closure_t> __cls_g)
       out << "END\n";    
     }
     
-# 151 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 151);     __cls->set_jumpto (2); 
-# 151 "resolver.T"
+# 153 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 153);     __cls->set_jumpto (2); 
+# 153 "resolver.T"
  tame:: waitwrite (fd, mkevent()); 
-# 151 "resolver.T"
+# 153 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_2:       ;   } while (0);
-# 151 "resolver.T"
+# 153 "resolver.T"
 
     if ( out.tosuio()->output(fd) < 0) {
       close(fd);
@@ -173,30 +175,30 @@ process( int __tame_fd, ptr<closure_t> __cls_g)
     input.clear();
   }
   
-# 162 "resolver.T"
-  do { __cls->end_of_scope_checks (162);
-# 162 "resolver.T"
+# 164 "resolver.T"
+  do { __cls->end_of_scope_checks (164);
+# 164 "resolver.T"
     return ;  } while (0);
-# 163 "resolver.T"
-  do {   __cls->end_of_scope_checks (163);   return;   } while (0);
-# 163 "resolver.T"
+# 165 "resolver.T"
+  do {   __cls->end_of_scope_checks (165);   return;   } while (0);
+# 165 "resolver.T"
 }
 
 
-# 166 "resolver.T"
+# 168 "resolver.T"
 static void  listen_loop(ptr<closure_t> __cls_g = NULL); 
-# 166 "resolver.T"
-class listen_loop__closure_t : public closure_t { public:   listen_loop__closure_t () : closure_t ("resolver.T", "listen_loop"),  _stack (), _args () {}   void reenter ()   {     listen_loop (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () : G ("resolver.T", 169)  {}      int s;      int fd;      int len;      rendezvous_t< ev_t > G;      socklen_t t;      struct sockaddr_un local;      struct sockaddr_un remote;      char input[1000];      ev_t which;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 166 "resolver.T"
+# 168 "resolver.T"
+class listen_loop__closure_t : public closure_t { public:   listen_loop__closure_t () : closure_t ("resolver.T", "listen_loop"),  _stack (), _args () {}   void reenter ()   {     listen_loop (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () : G ("resolver.T", 171)  {}      int s;      int fd;      int len;      rendezvous_t< ev_t > G;      socklen_t t;      struct sockaddr_un local;      struct sockaddr_un remote;      char input[1000];      ev_t which;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 168 "resolver.T"
 void 
 listen_loop(ptr<closure_t> __cls_g)
 {
-# 166 "resolver.T"
+# 168 "resolver.T"
 
   
-# 167 "resolver.T"
+# 169 "resolver.T"
   listen_loop__closure_t *__cls;   ptr<listen_loop__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<listen_loop__closure_t> ();     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<listen_loop__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    int &s = __cls->_stack.s;    int &fd = __cls->_stack.fd;    int &len = __cls->_stack.len;    rendezvous_t< ev_t > &G = __cls->_stack.G;    socklen_t &t = __cls->_stack.t;    struct sockaddr_un &local = __cls->_stack.local;    struct sockaddr_un &remote = __cls->_stack.remote;    char *input = __cls->_stack.input;    ev_t &which = __cls->_stack.which;   switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto listen_loop__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 174 "resolver.T"
+# 176 "resolver.T"
 
 
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
@@ -223,9 +225,9 @@ listen_loop(ptr<closure_t> __cls_g)
       int n;
       if (DEBUG) cout << "Waiting for a connection...\n";
       
-# 199 "resolver.T"
+# 201 "resolver.T"
 listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set_jumpto (1);       (G)._ti_set_join_cls (__cls_r);       return;   } else {     (G)._ti_clear_join_method ();   } } while (0);
-# 199 "resolver.T"
+# 201 "resolver.T"
 
 
       switch (which) {
@@ -244,33 +246,73 @@ listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set
       }
   }
   
-# 216 "resolver.T"
-  do { __cls->end_of_scope_checks (216);
-# 216 "resolver.T"
+# 218 "resolver.T"
+  do { __cls->end_of_scope_checks (218);
+# 218 "resolver.T"
     return ;  } while (0);
-# 217 "resolver.T"
-  do {   __cls->end_of_scope_checks (217);   return;   } while (0);
-# 217 "resolver.T"
+# 219 "resolver.T"
+  do {   __cls->end_of_scope_checks (219);   return;   } while (0);
+# 219 "resolver.T"
 }
 
-int main (int argc, char *argv[]) {
+# 221 "resolver.T"
+static void  main2(ptr<closure_t> __cls_g = NULL); 
+# 221 "resolver.T"
+class main2__closure_t : public closure_t { public:   main2__closure_t () : closure_t ("resolver.T", "main2"),  _stack (), _args () {}   void reenter ()   {     main2 (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () {}      ofstream logfile;      Driver *driver;      Statement *quova_stmt;      Statement *donar_stmt;      bool init_success;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 221 "resolver.T"
+void 
+main2(ptr<closure_t> __cls_g)
+{
+# 221 "resolver.T"
+
+  
+# 222 "resolver.T"
+  main2__closure_t *__cls;   ptr<main2__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<main2__closure_t> ();     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<main2__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    ofstream &logfile = __cls->_stack.logfile;    Driver *&driver = __cls->_stack.driver;    Statement *&quova_stmt = __cls->_stack.quova_stmt;    Statement *&donar_stmt = __cls->_stack.donar_stmt;    bool &init_success = __cls->_stack.init_success;   switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto main2__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
+# 228 "resolver.T"
+
   // Open log file
-  ofstream logfile;
   logfile.open("/var/log/donar", ios::out | ios::app);
   logfile << "Test";
 
   // Setup mysql connections
-  Driver *driver;
   driver = get_driver_instance();
   
   quova_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);
   donar_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);  
 
-  Statement *quova_stmt = quova_conn->createStatement();
-  Statement *donar_stmt = donar_conn->createStatement();
+  quova_stmt = quova_conn->createStatement();
+  donar_stmt = donar_conn->createStatement();
   quova_stmt->execute("USE quova");
   donar_stmt->execute("USE namecast");
+
+  // Setup craq connection
+  
+# 245 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 245);     __cls->set_jumpto (1); 
+# 245 "resolver.T"
+
+    craq.init(ZOO_LIST, mkevent(init_success));
+  
+# 247 "resolver.T"
+      if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_1:       ;   } while (0);
+# 247 "resolver.T"
+
+
+  if (init_success) {
+    if (DEBUG) cout << "Connection established.\n";
+  }
+  else {
+    if (DEBUG) cout << "Connection establishemnt failed.\n";
+    exit(-1);
+  }
   
   listen_loop();
+# 258 "resolver.T"
+  do {   __cls->end_of_scope_checks (258);   return;   } while (0);
+# 258 "resolver.T"
+}
+
+int main (int argc, char* argv[]) {
+  main2();
   amain();
 }

@@ -19,6 +19,7 @@
 #include "arpc.h"
 #include "tame_rpcserver.h"
 #include "mysql_connection.h"
+#include "client/craq_interface.h"
 #include "cppconn/driver.h"
 #include "cppconn/connection.h"
 #include "cppconn/statement.h"
@@ -35,15 +36,16 @@
 #define MYSQL_USER "root"
 #define MYSQL_PASS "35500"
 #define MYSQL_HOST "unix:///var/run/mysqld/mysqld.sock"
+#define ZOO_LIST "127.0.0.1:2181"
 #define DEBUG 1
 
 using namespace std;
 using namespace sql;
 
-typedef enum { READ, WRITE } ev_t;
-const unsigned int MAX_BUF = 1000;
+const unsigned int MAX_BUFF = 1000;
 Connection* quova_conn;
 Connection* donar_conn;
+craq_interface craq;
 
 string last; // PDNS hack
 
@@ -89,7 +91,7 @@ tamed static void process(int fd) {
   tvars {
     strbuf resp;
     strbuf out;
-    char buff[MAX_BUF];
+    char buff[MAX_BUFF];
     int line_len;
     string type;
     string qname;
@@ -216,24 +218,46 @@ tamed static void listen_loop() {
   return;
 }
 
-int main (int argc, char *argv[]) {
+tamed static void main2() {
+  tvars {
+    ofstream logfile;
+    Driver *driver;
+    Statement *quova_stmt;
+    Statement *donar_stmt;
+    bool init_success;
+  }
   // Open log file
-  ofstream logfile;
   logfile.open("/var/log/donar", ios::out | ios::app);
   logfile << "Test";
 
   // Setup mysql connections
-  Driver *driver;
   driver = get_driver_instance();
   
   quova_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);
   donar_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);  
 
-  Statement *quova_stmt = quova_conn->createStatement();
-  Statement *donar_stmt = donar_conn->createStatement();
+  quova_stmt = quova_conn->createStatement();
+  donar_stmt = donar_conn->createStatement();
   quova_stmt->execute("USE quova");
   donar_stmt->execute("USE namecast");
+
+  // Setup craq connection
+  twait {
+    craq.init(ZOO_LIST, mkevent(init_success));
+  }
+
+  if (init_success) {
+    if (DEBUG) cout << "Connection established.\n";
+  }
+  else {
+    if (DEBUG) cout << "Connection establishemnt failed.\n";
+    exit(-1);
+  }
   
   listen_loop();
+}
+
+int main (int argc, char* argv[]) {
+  main2();
   amain();
 }
