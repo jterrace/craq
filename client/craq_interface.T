@@ -269,8 +269,32 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
   TRIGGER(cb, true);
 }
 
+
 tamed void craq_interface::node_list_watcher(string path) {
-  
+  tvars{}
+/*  
+  if (!ring_init) {
+    fatal << "Can't update node list while retrieving initial list.\n";
+  }
+
+  twait { czoo_get_children("/nodes/data", &node_list_watcher,
+    mkevent(ret_node_list)); }
+  if (ret_node_list == NULL) {
+    fatal << "Error retrieving updated node list!\n";
+  } 
+  for (i=0; i<ret_node_list->size(); i++) {
+    new_list.insert( (*ret_node_list)[i] );
+  }
+  delete ret_node_list;
+
+  old_it = zoo_nodes.begin();
+  new_it = new_list.begin();
+
+
+  while (old_it != zoo_nodes.end() || new_it != new_list.end()) {
+    if (old_it == zoo_nodes.end()) {
+  }
+*/
 }
 
 tamed void craq_interface::get_chain_info(ID_Value chain_id, 
@@ -349,8 +373,8 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
 
-  twait {iface.set_key("patrick", "foo", mkevent(set_result));}
-  twait {iface.get_key("patrick", mkevent(result));}
+  twait {iface.set_key(string("patrick"), "foo", 3, mkevent(set_result));}
+  twait {iface.get_key(string("patrick"), mkevent(result));}
 
   cout << "Result: " << result << "\n.";
   exit(0);
