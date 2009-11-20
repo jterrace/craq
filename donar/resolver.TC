@@ -1,0 +1,276 @@
+
+# 1 "resolver.T"
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <cstring>
+#include <sstream>
+#include <iostream>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h> 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include "tame.h"
+#include "tame_io.h"
+#include "async.h"
+#include "resolver.h"
+#include "arpc.h"
+#include "tame_rpcserver.h"
+#include "mysql_connection.h"
+#include "cppconn/driver.h"
+#include "cppconn/connection.h"
+#include "cppconn/statement.h"
+#include "cppconn/prepared_statement.h"
+#include "cppconn/resultset.h"
+#include "cppconn/metadata.h"
+#include "cppconn/resultset_metadata.h"
+#include "cppconn/exception.h"
+#include "cppconn/warning.h"
+#include <tr1/unordered_map>
+#include <tr1/unordered_set>
+
+#define SOCK_PATH "echo_socket"
+#define MYSQL_USER "root"
+#define MYSQL_PASS "35500"
+#define MYSQL_HOST "unix:///var/run/mysqld/mysqld.sock"
+#define DEBUG 1
+
+using namespace std;
+using namespace sql;
+
+typedef enum { READ, WRITE } ev_t;
+const unsigned int MAX_BUF = 1000;
+Connection* quova_conn;
+Connection* donar_conn;
+
+string last; // PDNS hack
+
+tr1::unordered_set<ClientRegion> known_clients;
+tr1::unordered_set<SubdomainInfo> subdomain_cache;
+
+ClientRegion::ClientRegion(double lat, double lon) {
+  this->lat = lat;
+  this->lon = lon;
+}
+
+bool ClientRegion::operator==(const ClientRegion &other) {
+  return (this->lat == other.lat && this->lon == other.lon);
+}
+
+// Arbitrary ordering
+bool ClientRegion::operator>(const ClientRegion &other) {
+  if (this->lat > other.lat) return true;
+  if (this->lat == other.lat) {
+    if (this->lon > other.lon) return true;
+  }
+  return false;
+}
+
+bool ClientRegion::operator<(const ClientRegion &other) {
+  return (!(*this == other) && !(*this > other));
+}
+
+int ClientRegion::get_hash() {
+  int out = 0;
+  for (int i = 0; i < (2 * sizeof(double)); i++) {
+    if (i < sizeof(double)) {
+      out = out*31 + ((char*) &lat)[i];
+    }
+    else {
+      out = out*31 + ((char*) &lon)[i - sizeof(double)];
+    }
+  } 
+  return out;
+}
+
+# 88 "resolver.T"
+static void  process( int fd, ptr<closure_t> __cls_g = NULL); 
+# 88 "resolver.T"
+class process__closure_t : public closure_t { public:   process__closure_t ( int fd) : closure_t ("resolver.T", "process"),  _stack (fd), _args (fd) {}   void reenter ()   {     process (_args.fd, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int fd) {}      strbuf resp;      strbuf out;      char buff[MAX_BUF];      int line_len;      string type;      string qname;      string qclass;      string qtype;      int id;      istringstream input;      string remote_ip;      string in;      string query;      string test;      Statement *stmt;      ResultSet *res;      bool init;   };   struct args_t {     args_t ( int fd) : fd (fd) {}      int fd;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 88 "resolver.T"
+void 
+process( int __tame_fd, ptr<closure_t> __cls_g)
+{
+# 88 "resolver.T"
+
+  
+# 89 "resolver.T"
+  process__closure_t *__cls;   ptr<process__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<process__closure_t> (__tame_fd);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<process__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    strbuf &resp = __cls->_stack.resp;    strbuf &out = __cls->_stack.out;    char *buff = __cls->_stack.buff;    int &line_len = __cls->_stack.line_len;    string &type = __cls->_stack.type;    string &qname = __cls->_stack.qname;    string &qclass = __cls->_stack.qclass;    string &qtype = __cls->_stack.qtype;    int &id = __cls->_stack.id;    istringstream &input = __cls->_stack.input;    string &remote_ip = __cls->_stack.remote_ip;    string &in = __cls->_stack.in;    string &query = __cls->_stack.query;    string &test = __cls->_stack.test;    Statement *&stmt = __cls->_stack.stmt;    ResultSet *&res = __cls->_stack.res;    bool &init = __cls->_stack.init;    int &fd = __cls->_args.fd;    use_reference (fd);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto process__label_1;     break;   case 2:     goto process__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
+# 107 "resolver.T"
+
+  while (true) {
+    
+# 109 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 109);     __cls->set_jumpto (1); 
+# 109 "resolver.T"
+ tame::waitread (fd, mkevent()); 
+# 109 "resolver.T"
+      if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_1:       ;   } while (0);
+# 109 "resolver.T"
+
+    if ( (resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
+      break;
+    }
+    line_len = str(resp).len();
+    if (!init) {
+      test = string(str(resp).cstr());
+      if (test == "HELO\t1") {
+        out << "OK	DONAR Backend fired up...\n";
+        init = true;
+      }
+      else {
+        out << "FAIL\n";
+      }
+    }
+    else {
+      input.str(str(resp).cstr());
+      input >> type;
+      input >> qname;
+
+      input >> qclass;
+      input >> qtype;
+      input >> id;
+      input >> remote_ip;
+      //out << id;
+      
+      if (type == "AXFR") {
+        out << strbuf("%s", last.c_str());
+      }
+      else {
+        stmt = donar_conn->createStatement();
+        query = "SELECT * FROM records WHERE name = '" + qname + "'";
+        res = stmt->executeQuery(query);
+        while (res->next()) {
+          out << strbuf("DATA %s IN %s %i -1 %s\n",
+	    res->getString("name").c_str(), res->getString("type").c_str(),
+  	    res->getInt("ttl"), res->getString("content").c_str());
+          last = string(str(out).cstr());
+        }
+      }
+      out << "END\n";    
+    }
+    
+# 151 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 151);     __cls->set_jumpto (2); 
+# 151 "resolver.T"
+ tame:: waitwrite (fd, mkevent()); 
+# 151 "resolver.T"
+      if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_2:       ;   } while (0);
+# 151 "resolver.T"
+
+    if ( out.tosuio()->output(fd) < 0) {
+      close(fd);
+      if (DEBUG) cout << "Error writing to socket, closing";
+      break;
+    }
+    out.tosuio()->rembytes(out.tosuio()->linelen());
+    resp.tosuio()->rembytes(line_len);
+    input.str("");
+    input.clear();
+  }
+  
+# 162 "resolver.T"
+  do { __cls->end_of_scope_checks (162);
+# 162 "resolver.T"
+    return ;  } while (0);
+# 163 "resolver.T"
+  do {   __cls->end_of_scope_checks (163);   return;   } while (0);
+# 163 "resolver.T"
+}
+
+
+# 166 "resolver.T"
+static void  listen_loop(ptr<closure_t> __cls_g = NULL); 
+# 166 "resolver.T"
+class listen_loop__closure_t : public closure_t { public:   listen_loop__closure_t () : closure_t ("resolver.T", "listen_loop"),  _stack (), _args () {}   void reenter ()   {     listen_loop (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () : G ("resolver.T", 169)  {}      int s;      int fd;      int len;      rendezvous_t< ev_t > G;      socklen_t t;      struct sockaddr_un local;      struct sockaddr_un remote;      char input[1000];      ev_t which;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 166 "resolver.T"
+void 
+listen_loop(ptr<closure_t> __cls_g)
+{
+# 166 "resolver.T"
+
+  
+# 167 "resolver.T"
+  listen_loop__closure_t *__cls;   ptr<listen_loop__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<listen_loop__closure_t> ();     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<listen_loop__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    int &s = __cls->_stack.s;    int &fd = __cls->_stack.fd;    int &len = __cls->_stack.len;    rendezvous_t< ev_t > &G = __cls->_stack.G;    socklen_t &t = __cls->_stack.t;    struct sockaddr_un &local = __cls->_stack.local;    struct sockaddr_un &remote = __cls->_stack.remote;    char *input = __cls->_stack.input;    ev_t &which = __cls->_stack.which;   switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto listen_loop__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
+# 174 "resolver.T"
+
+
+  if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+      perror("socket");
+      exit(1);
+  }
+
+  local.sun_family = AF_UNIX;
+  strcpy(local.sun_path, SOCK_PATH);
+  remove(local.sun_path);
+  len = strlen(local.sun_path) + sizeof(local.sun_family);
+  if (bind(s, (struct sockaddr *)&local, len) == -1) {
+      perror("bind");
+      exit(1);
+  }
+
+  if (listen(s, 5) == -1) {
+      perror("listen");
+      exit(1);
+  }
+
+  while (true) {
+      tame::waitread(s, mkevent(G, READ));
+      int n;
+      if (DEBUG) cout << "Waiting for a connection...\n";
+      
+# 199 "resolver.T"
+listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set_jumpto (1);       (G)._ti_set_join_cls (__cls_r);       return;   } else {     (G)._ti_clear_join_method ();   } } while (0);
+# 199 "resolver.T"
+
+
+      switch (which) {
+        case READ:
+          t = sizeof(remote);
+          if ((fd = accept(s, reinterpret_cast<sockaddr *>(&remote), &t)) 
+             == -1) {
+	    perror("accept");
+	    exit(1);
+          }
+          if (DEBUG) cout << "Connected.\n";
+          process(fd);
+          break;
+	default:
+          break;
+      }
+  }
+  
+# 216 "resolver.T"
+  do { __cls->end_of_scope_checks (216);
+# 216 "resolver.T"
+    return ;  } while (0);
+# 217 "resolver.T"
+  do {   __cls->end_of_scope_checks (217);   return;   } while (0);
+# 217 "resolver.T"
+}
+
+int main (int argc, char *argv[]) {
+  // Open log file
+  ofstream logfile;
+  logfile.open("/var/log/donar", ios::out | ios::app);
+  logfile << "Test";
+
+  // Setup mysql connections
+  Driver *driver;
+  driver = get_driver_instance();
+  
+  quova_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);
+  donar_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);  
+
+  Statement *quova_stmt = quova_conn->createStatement();
+  Statement *donar_stmt = donar_conn->createStatement();
+  quova_stmt->execute("USE quova");
+  donar_stmt->execute("USE namecast");
+  
+  listen_loop();
+  amain();
+}

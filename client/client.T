@@ -33,7 +33,6 @@ struct chain_meta {
 	vector<string> data_centers;
 };
 map<ID_Value, chain_meta> chain_meta_list;
-map<char, char> hex_map;
 
 
 blob make_blob(const char * str) {
@@ -621,24 +620,6 @@ tamed static void main2(int argc, char **argv) {
 	warn << "Initializing...";
 	twait { connect_to_manager(zookeeper_list, mkevent()); }
 	warn << " Done.\n";
-
-	hex_map[0x00] = '0';
-        hex_map[0x01] = '1';
-        hex_map[0x02] = '2';
-        hex_map[0x03] = '3';
-        hex_map[0x04] = '4';
-        hex_map[0x05] = '5';
-        hex_map[0x06] = '6';
-        hex_map[0x07] = '7';
-        hex_map[0x08] = '8';
-        hex_map[0x09] = '9';
-        hex_map[0x0a] = 'a';
-        hex_map[0x0b] = 'b';
-        hex_map[0x0c] = 'c';
-        hex_map[0x0d] = 'd';
-        hex_map[0x0e] = 'e';
-        hex_map[0x0f] = 'f';
-
 	listen_loop(listen_port);
 
 }
