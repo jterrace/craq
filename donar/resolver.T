@@ -17,6 +17,7 @@
 #include "async.h"
 #include "resolver.h"
 #include "arpc.h"
+#include "donar_rpc.h"
 #include "tame_rpcserver.h"
 #include "mysql_connection.h"
 #include "client/craq_interface.h"
@@ -38,6 +39,7 @@
 #define MYSQL_HOST "unix:///var/run/mysqld/mysqld.sock"
 #define ZOO_LIST "127.0.0.1:2181"
 #define DEBUG 1
+#define MAX_CACHE_PERIOD 10
 
 using namespace std;
 using namespace sql;
@@ -49,12 +51,23 @@ craq_interface craq;
 
 string last; // PDNS hack
 
-tr1::unordered_set<ClientRegion> known_clients;
-tr1::unordered_set<SubdomainInfo> subdomain_cache;
+// Store subdomains in a hash-set for quick lookup
+tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual> 
+  subdomain_cache;
+tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual>::iterator
+  subdomain_cache_it;
 
-ClientRegion::ClientRegion(double lat, double lon) {
+ClientRegion::ClientRegion(int lat, int lon) {
   this->lat = lat;
   this->lon = lon;
+}
+
+ClientRegion::ClientRegion() {
+}
+
+ostream& operator<<(ostream& s, ClientRegion &cr) {
+  s << "Client Region: (" << cr.lat << ", " << cr.lon << ")";
+  return s;
 }
 
 bool ClientRegion::operator==(const ClientRegion &other) {
@@ -76,15 +89,152 @@ bool ClientRegion::operator<(const ClientRegion &other) {
 
 int ClientRegion::get_hash() {
   int out = 0;
-  for (int i = 0; i < (2 * sizeof(double)); i++) {
-    if (i < sizeof(double)) {
+  for (int i = 0; i < (2 * sizeof(int)); i++) {
+    if (i < sizeof(int)) {
       out = out*31 + ((char*) &lat)[i];
     }
     else {
-      out = out*31 + ((char*) &lon)[i - sizeof(double)];
+      out = out*31 + ((char*) &lon)[i - sizeof(int)];
     }
   } 
   return out;
+}
+
+
+// Functions for hash based sets
+size_t ClientRegionEqual::operator()(
+  const ClientRegion &cr1, const ClientRegion &cr2) const {
+  ClientRegion& cr1_b = const_cast<ClientRegion&>(cr1);
+  ClientRegion& cr2_b = const_cast<ClientRegion&>(cr2);
+  return cr1_b == cr2_b;
+} 
+
+size_t ClientRegionHash::operator()(const ClientRegion &cr) const {
+  return const_cast<ClientRegion&>(cr).get_hash();
+}
+
+size_t SubdomainEqual::operator()(
+  const SubdomainInfo &s1, const SubdomainInfo &s2) const {
+  return (string(s1.storage.fqdn.cstr()) == string(s2.storage.fqdn.cstr()));
+}
+
+size_t SubdomainHash::operator()(const SubdomainInfo &s) const {
+  size_t out = 0;
+  const char* fqdn = s.storage.fqdn.cstr();
+  for (int i = 0; i < strlen(fqdn); i++) {
+    out = out * 31 + fqdn[i];
+  }
+  return out;
+}
+
+// Increments various counters which record request volume and client space.
+void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
+  // Assure we're storing this client region for this subdomain
+  num_requests_iter it = sd->num_requests.find(*c);
+  if (it == sd->num_requests.end()) {
+    unordered_map<size_t, unsigned int> new_map;
+    sd->num_requests.insert(
+      pair<ClientRegion, unordered_map<size_t, unsigned int> >(*c, new_map));
+  }
+ 
+  size_t time = time(NULL);
+  time = time - (time % 60); // Request granulairty is per-minute
+  if (sd->num_requests
+}
+
+tamed static void get_client_region(string ip, cb_cr cb) {
+  tvars {
+    Statement *st;
+    ResultSet *res;
+    float lat_f;
+    float lon_f;
+    int lat_d;
+    int lon_d;
+    int lat_d_rounded;
+    int lon_d_rounded;
+  }
+  st = quova_conn->createStatement();
+  res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
+    SELECT MAX(start_ip_int) FROM quova b\
+    WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
+    AND a.end_ip_int >= INET_ATON('" + ip + "');");
+
+  while (res->next()) {
+    lat_f = static_cast<float>(res->getInt("latitude"));
+    lon_f = static_cast<float>(res->getInt("longitude"));
+  }
+  lat_d = static_cast<int>(lat_f);
+  lon_d = static_cast<int>(lon_f);
+
+  // Binning
+  lat_d_rounded = lat_d - (lat_d % 5);
+  lon_d_rounded = lon_d - (lon_d % 5);
+  
+  ClientRegion out = ClientRegion(lat_d_rounded, lon_d_rounded);
+  TRIGGER(cb, out);
+}
+
+// Gets a subdomain record from cache. May hit CRAQ if cached copy is
+// old or non-existent.
+tamed static void get_from_cache(string fqdn, cb_sub cb) {
+  tvars {
+    SubdomainInfo to_find;
+    SubdomainInfo to_insert;
+    str subdomain_data;
+    subdomain sd;
+  }
+  to_find.storage.fqdn = str(fqdn.c_str());
+  subdomain_cache_it = subdomain_cache.find(to_find);
+  
+  // No data stored for this record
+  if (subdomain_cache_it == subdomain_cache.end()) {
+    twait {craq.get_key(fqdn, mkevent(subdomain_data));}
+    str2xdr(sd, subdomain_data);
+
+    // TODO deal with not found
+    to_insert.storage = sd;
+    to_insert.validated = time(NULL);
+    subdomain_cache.insert(to_insert);
+    if (DEBUG) {
+      cout << "Inserting record into cache from CRAQ";
+      fflush(stdout);
+    }
+    TRIGGER(cb, 
+      const_cast<SubdomainInfo*>(&*(subdomain_cache.find(to_insert))));
+    return;
+  }
+
+  // If data stored, test if it's expired
+  if (time(NULL) > (subdomain_cache_it->validated + MAX_CACHE_PERIOD)) {
+    twait {craq.get_key(fqdn, mkevent(subdomain_data));}
+    str2xdr(sd, subdomain_data);
+    if (sd.seq_number > subdomain_cache_it->storage.seq_number) {
+      to_insert.storage = sd;
+      to_insert.validated = time(NULL);
+      subdomain_cache.insert(to_insert); // This will overwrite (?)
+      if (DEBUG) {
+        cout << "Sequence number too low, updating record";
+        fflush(stdout);
+      }
+      TRIGGER(cb,
+      const_cast<SubdomainInfo*>(&*(subdomain_cache.find(to_insert))));
+      return;
+    }
+    else {
+      const_cast<SubdomainInfo*>(&*subdomain_cache_it)->validated = time(NULL);
+    } 
+    // TODO: deal with case where sequence number not updated but TTL's are
+    // different
+  }
+
+  if (DEBUG) {
+    cout << "Answering for " << fqdn << " from cache.\n";
+    fflush(stdout);
+  }
+
+  // Otherwise just return the existing subdomain
+  TRIGGER(cb,
+    const_cast<SubdomainInfo*>(&*(subdomain_cache_it)));
 }
 
 tamed static void process(int fd) {
@@ -106,6 +256,11 @@ tamed static void process(int fd) {
     Statement *stmt;
     ResultSet *res;
     bool init;
+    str subdomain_data;
+    SubdomainInfo* sd;
+    record rec;
+    string record_data_str;
+    ClientRegion cr;
   }
   while (true) {
     twait{ tame::waitread (fd, mkevent()); }
@@ -133,20 +288,23 @@ tamed static void process(int fd) {
       input >> id;
       input >> remote_ip;
       //out << id;
-      
+    
+      twait {get_client_region(remote_ip, mkevent(cr));}
+
       if (type == "AXFR") {
         out << strbuf("%s", last.c_str());
       }
       else {
-        stmt = donar_conn->createStatement();
-        query = "SELECT * FROM records WHERE name = '" + qname + "'";
-        res = stmt->executeQuery(query);
-        while (res->next()) {
-          out << strbuf("DATA %s IN %s %i -1 %s\n",
-	    res->getString("name").c_str(), res->getString("type").c_str(),
-  	    res->getInt("ttl"), res->getString("content").c_str());
-          last = string(str(out).cstr());
+        twait {get_from_cache(qname, mkevent(sd));}
+        if (sd == NULL) break;
+        log_client_request(&cr, sd);
+        for (int i = 0; i < sd->storage.records.size(); i++) {
+           rec = sd->storage.records[i];
+           out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
+            sd->storage.fqdn.cstr(), rec.type.cstr(), 
+            rec.ttl, rec.content.cstr());
         }
+        last = string(str(out).cstr());
       }
       out << "END\n";    
     }
@@ -163,7 +321,6 @@ tamed static void process(int fd) {
   }
   return;
 }
-
 
 tamed static void listen_loop() {
   tvars {
