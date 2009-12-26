@@ -33,13 +33,16 @@
 #include <tr1/unordered_map>
 #include <tr1/unordered_set>
 
-#define SOCK_PATH "echo_socket"
-#define MYSQL_USER "root"
-#define MYSQL_PASS "35500"
-#define MYSQL_HOST "unix:///var/run/mysqld/mysqld.sock"
-#define ZOO_LIST "127.0.0.1:2181"
+str sock_path;
+str mysql_user;
+str mysql_pass;
+str mysql_host;
+str zoo_list;
 #define DEBUG 1
 #define MAX_CACHE_PERIOD 10
+#define LOG_EXPIRY_MINUTES 15
+#define LOG_CLEAN_INTERVAL_MINS 15
+#define MAX_A_RECORDS 10
 
 using namespace std;
 using namespace sql;
@@ -56,6 +59,10 @@ tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual>
   subdomain_cache;
 tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual>::iterator
   subdomain_cache_it;
+
+// Cache of IP location lookups so we don't hit quova as often
+tr1::unordered_map<unsigned long, ClientRegion> location_cache;
+tr1::unordered_map<unsigned long, ClientRegion>:: iterator location_cache_it;
 
 ClientRegion::ClientRegion(int lat, int lon) {
   this->lat = lat;
@@ -106,7 +113,7 @@ size_t ClientRegionEqual::operator()(
   const ClientRegion &cr1, const ClientRegion &cr2) const {
   ClientRegion& cr1_b = const_cast<ClientRegion&>(cr1);
   ClientRegion& cr2_b = const_cast<ClientRegion&>(cr2);
-  return cr1_b == cr2_b;
+  return (cr1.lat == cr2.lat) && (cr1.lon == cr2.lon);
 } 
 
 size_t ClientRegionHash::operator()(const ClientRegion &cr) const {
@@ -127,19 +134,74 @@ size_t SubdomainHash::operator()(const SubdomainInfo &s) const {
   return out;
 }
 
+void print_request_logs(SubdomainInfo* sd) {
+  client_requests_iter it = sd->num_requests.begin();
+  cout << sd->storage.fqdn << endl;
+  while (it != sd->num_requests.end()) { 
+    ClientRegion r = it->first;
+    cout << r << endl;
+    unordered_map<size_t, unsigned int>* map = it->second;
+    num_request_iter t_it = map->begin();
+    while (t_it != map->end()) {
+      cout << t_it->first << ": " << t_it->second << endl;
+      ++t_it;
+    }
+    ++it;
+  }
+  fflush(stdout);
+}
+
+// Delete old records so we don't fill up too much memory
+void clean_request_logs() {
+  subdomain_cache_it = subdomain_cache.begin();
+  size_t cutoff_time = time(NULL) - (60 * LOG_EXPIRY_MINUTES);
+  while (subdomain_cache_it != subdomain_cache.end()) {
+    SubdomainInfo* sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
+    client_requests_iter it = sd->num_requests.begin();
+    while (it != sd->num_requests.end()) {
+      unordered_map<size_t, unsigned int>* map = it->second;
+      num_request_iter t_it = map->begin();
+      while (t_it != map->end()) {
+        if (t_it->first < cutoff_time) 
+          map->erase(t_it->first);           
+        t_it++;
+      }
+      it++;
+    }
+    subdomain_cache_it++;
+  }
+  delaycb(LOG_CLEAN_INTERVAL_MINS * 60, 0, wrap(clean_request_logs));
+}
+
 // Increments various counters which record request volume and client space.
 void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
   // Assure we're storing this client region for this subdomain
-  num_requests_iter it = sd->num_requests.find(*c);
+  client_requests_iter it = sd->num_requests.find(*c);
   if (it == sd->num_requests.end()) {
-    unordered_map<size_t, unsigned int> new_map;
+    unordered_map<size_t, unsigned int> *new_map = 
+      new unordered_map<size_t, unsigned int>;
     sd->num_requests.insert(
-      pair<ClientRegion, unordered_map<size_t, unsigned int> >(*c, new_map));
+      pair<ClientRegion, unordered_map<size_t, unsigned int>* >(*c, new_map));
+    it = sd->num_requests.find(*c);
   }
- 
-  size_t time = time(NULL);
-  time = time - (time % 60); // Request granulairty is per-minute
-  if (sd->num_requests
+  unordered_map<size_t, unsigned int>* existing_map = it->second;
+
+  size_t t = time(NULL);
+
+  t = t - (t % 60); // Request granularity is per-minute
+
+  // Add this request to the log for this minute
+  num_request_iter t_it = existing_map->find(t);
+  
+  if (t_it == existing_map->end()) {
+    existing_map->insert(pair<size_t, unsigned int>(t, 1));
+  }
+  else {
+    cout << "Updating Value\n";
+    unsigned int value = t_it->second;
+    existing_map->erase(t);
+    existing_map->insert(pair<size_t, unsigned int>(t, value + 1));
+  }
 }
 
 tamed static void get_client_region(string ip, cb_cr cb) {
@@ -152,12 +214,27 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     int lon_d;
     int lat_d_rounded;
     int lon_d_rounded;
+    struct in_addr addr;
+  }
+  if (DEBUG) {
+    cout << "Quova lookup requested for " << ip << endl;
+    fflush(stdout);
+  }
+  // In cache?
+  inet_aton(ip.c_str(), &addr);
+  location_cache_it = location_cache.find(addr.s_addr);
+  if (location_cache_it != location_cache.end()) {
+    TRIGGER(cb, location_cache_it->second);
+    return;
   }
   st = quova_conn->createStatement();
   res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
     SELECT MAX(start_ip_int) FROM quova b\
     WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
     AND a.end_ip_int >= INET_ATON('" + ip + "');");
+
+  lat_f = 0;
+  lon_f = 0;
 
   while (res->next()) {
     lat_f = static_cast<float>(res->getInt("latitude"));
@@ -169,9 +246,80 @@ tamed static void get_client_region(string ip, cb_cr cb) {
   // Binning
   lat_d_rounded = lat_d - (lat_d % 5);
   lon_d_rounded = lon_d - (lon_d % 5);
-  
+ 
   ClientRegion out = ClientRegion(lat_d_rounded, lon_d_rounded);
+
+  if (location_cache.size() > 300) {
+    location_cache.erase(location_cache.begin()->first);
+  }
+  
+  location_cache.insert(pair<unsigned long, ClientRegion>(addr.s_addr, out));
+  
+  if (DEBUG) {
+    cout << "Returning client region from quova lookup: " <<  out << endl;
+    fflush(stdout);
+  }
   TRIGGER(cb, out);
+}
+
+// Return a subset of the A records for SubdomainInfo as determined
+// by optimal mapping policy. If policy not yet in place, default
+// policy is to return nereast three records.
+tamed static void get_a_records(SubdomainInfo* sd, ClientRegion* cr,
+  callback<void, vector<record> >::ref cb) {
+  tvars{
+    ClientRegion other;
+    vector<record> out; 
+    multimap<int, record> by_distance;
+    multimap<int, record>::iterator by_distance_it;
+    record rec;
+    int i;
+    vector<pair<record, float> > rules;
+    rules_iter r_it;
+    bool rules_present;
+    client_rule_iter c_it;
+    unordered_map<ClientRegion, float, ClientRegionHash, ClientRegionEqual> 
+      this_rec;
+
+  }
+  rules_present = false;
+
+  r_it = sd->rules.begin();
+  while (r_it != sd->rules.end()) {
+    // For each record
+    rules_present = true;
+    this_rec = r_it->second;
+      
+    c_it = this_rec.find(*cr);
+    if (c_it != this_rec.end()) {
+      // For this client find out the probability of routing
+      rules.push_back(pair<record, float>(r_it->first, c_it->second));
+      ++c_it;
+    }
+    else {
+      rules_present = false;
+      break;
+    }
+    ++r_it;
+  }
+
+  // If we don't have rules yet, just use proximity
+  if (!rules_present) {
+    if (DEBUG) cout << "Didn't find rules for this record.\n";
+    for (i = 0; i < sd->storage.records.size(); i++) {
+      rec = sd->storage.records[i];
+      twait{get_client_region(rec.content.cstr(), mkevent(other));}
+      int distance = ((cr->lat - other.lat) * (cr->lat - other.lat)) +
+	((cr->lon - other.lon) * (cr->lon - other.lon));
+      by_distance.insert(pair<int, record>(distance, rec));
+    }
+    by_distance_it = by_distance.begin();
+    for (i = 0; (i < by_distance.size()) && (i < MAX_A_RECORDS); i++) {
+      out.push_back(by_distance_it->second);
+      by_distance_it++;
+    }
+    TRIGGER(cb, out);
+  }
 }
 
 // Gets a subdomain record from cache. May hit CRAQ if cached copy is
@@ -184,15 +332,25 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     subdomain sd;
   }
   to_find.storage.fqdn = str(fqdn.c_str());
+  if (DEBUG) {
+    cout << "Cache request for " << fqdn << endl;
+    fflush(stdout);
+  }
   subdomain_cache_it = subdomain_cache.find(to_find);
   
   // No data stored for this record
   if (subdomain_cache_it == subdomain_cache.end()) {
+    cout << "Getting key";
+    fflush(stdout);
     twait {craq.get_key(fqdn, mkevent(subdomain_data));}
+    cout << "Got value of size " << subdomain_data.len();
+    cout << subdomain_data;
+    fflush(stdout);
     str2xdr(sd, subdomain_data);
 
     // TODO deal with not found
     to_insert.storage = sd;
+    to_insert.rules_populated = false;
     to_insert.validated = time(NULL);
     subdomain_cache.insert(to_insert);
     if (DEBUG) {
@@ -210,7 +368,9 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     str2xdr(sd, subdomain_data);
     if (sd.seq_number > subdomain_cache_it->storage.seq_number) {
       to_insert.storage = sd;
+      to_insert.rules_populated = false;
       to_insert.validated = time(NULL);
+      subdomain_cache.erase(subdomain_cache_it);
       subdomain_cache.insert(to_insert); // This will overwrite (?)
       if (DEBUG) {
         cout << "Sequence number too low, updating record";
@@ -261,6 +421,7 @@ tamed static void process(int fd) {
     record rec;
     string record_data_str;
     ClientRegion cr;
+    vector<record> recs;
   }
   while (true) {
     twait{ tame::waitread (fd, mkevent()); }
@@ -298,12 +459,30 @@ tamed static void process(int fd) {
         twait {get_from_cache(qname, mkevent(sd));}
         if (sd == NULL) break;
         log_client_request(&cr, sd);
+        print_request_logs(sd);
+
+        // Get A Records according to optimal policy
+        if (qtype == "A" || qtype == "ANY") {
+          twait {get_a_records(sd, &cr, mkevent(recs));}
+          vector<record>::iterator it = recs.begin();
+          while (it != recs.end()) {
+             out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
+            sd->storage.fqdn.cstr(), it->type.cstr(),
+            it->ttl, it->content.cstr()); 
+            ++it;
+          }
+        }
+        // Add other records
         for (int i = 0; i < sd->storage.records.size(); i++) {
            rec = sd->storage.records[i];
-           out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
-            sd->storage.fqdn.cstr(), rec.type.cstr(), 
-            rec.ttl, rec.content.cstr());
+           if ((rec.type != "A") && 
+             (qtype == "ANY" || qtype == rec.type.cstr())) {
+             out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
+              sd->storage.fqdn.cstr(), rec.type.cstr(), 
+              rec.ttl, rec.content.cstr());
+           }
         }
+
         last = string(str(out).cstr());
       }
       out << "END\n";    
@@ -338,7 +517,7 @@ tamed static void listen_loop() {
   }
 
   local.sun_family = AF_UNIX;
-  strcpy(local.sun_path, SOCK_PATH);
+  strcpy(local.sun_path, sock_path);
   remove(local.sun_path);
   len = strlen(local.sun_path) + sizeof(local.sun_family);
   if (bind(s, (struct sockaddr *)&local, len) == -1) {
@@ -375,13 +554,43 @@ tamed static void listen_loop() {
   return;
 }
 
-tamed static void main2() {
+tamed static void main2(int argc, char** argv) {
   tvars {
     ofstream logfile;
     Driver *driver;
     Statement *quova_stmt;
     Statement *donar_stmt;
     bool init_success;
+    int log_clean_interval;
+    conftab ct;
+    int ch;
+    str config;
+    vec<str> av;
+    int line;
+    bool errors;
+    parseargs pa("donar.conf", -1);
+  }
+  /*
+  while ((ch = getopt(argc, argv, "C")) != -1) {
+    switch(ch) {
+      case 'C':
+        config = optarg;
+        break;
+    }
+  }
+  */
+  // Config options
+  ct.add("MySqlUser", &mysql_user);
+  ct.add("MySqlPass", &mysql_pass);
+  ct.add("MySqlHost", &mysql_host);
+  ct.add("ZooList", &zoo_list);
+  ct.add("SockPath", &sock_path);
+
+  line = 0;
+  while (pa.getline(&av, &line)) {
+    if (!ct.match(av, str("donar.conf"), line, &errors)) {
+      warn << config << ":" << line << ": unknown directive\n";
+    }
   }
   // Open log file
   logfile.open("/var/log/donar", ios::out | ios::app);
@@ -390,17 +599,22 @@ tamed static void main2() {
   // Setup mysql connections
   driver = get_driver_instance();
   
-  quova_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);
-  donar_conn = driver->connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS);  
+  quova_conn = driver->connect(mysql_host.cstr(), mysql_user.cstr(), 
+    mysql_pass.cstr());
+  donar_conn = driver->connect(mysql_host.cstr(), mysql_user.cstr(), 
+    mysql_pass.cstr());  
 
   quova_stmt = quova_conn->createStatement();
   donar_stmt = donar_conn->createStatement();
   quova_stmt->execute("USE quova");
   donar_stmt->execute("USE namecast");
 
+  // Periodically clean old data
+  delaycb(LOG_CLEAN_INTERVAL_MINS * 60, 0, wrap(clean_request_logs));
+
   // Setup craq connection
   twait {
-    craq.init(ZOO_LIST, mkevent(init_success));
+    craq.init(string(zoo_list.cstr()), mkevent(init_success));
   }
 
   if (init_success) {
@@ -415,6 +629,6 @@ tamed static void main2() {
 }
 
 int main (int argc, char* argv[]) {
-  main2();
+  main2(argc, argv);
   amain();
 }
