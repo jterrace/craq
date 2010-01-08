@@ -90,7 +90,6 @@ answer_to_connection (void *cls, struct MHD_Connection *connection,
   return ret;
 }
 
-
 int
 main ()
 {
@@ -126,8 +125,6 @@ main ()
     else printf("Server closed connection\n");
     exit(1);
   }
-
-
 
   struct MHD_Daemon *daemon;
 

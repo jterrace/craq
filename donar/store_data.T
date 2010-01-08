@@ -22,6 +22,8 @@ tamed static void main2() {
     subdomain sd_out;
     record rec;
     record rec2;
+    record rec3;
+    record rec4;
     craq_interface iface;
     string zoo_list;
     bool init_success;
@@ -32,7 +34,7 @@ tamed static void main2() {
     str test;
   }
   
-  zoo_list = "127.0.0.1:2181";
+  zoo_list = "ernie.cs.princeton.edu:9876";
 
   twait {
     iface.init(zoo_list, mkevent(init_success));
@@ -44,17 +46,25 @@ tamed static void main2() {
   else {
     warn << "Connection establishemnt failed.\n";
   }
-  sd.seq_number = 1;
-  sd.fqdn = "foo.bar.com";
+  sd.seq_number = 2;
+  sd.fqdn = "kay.com";
   rec.type = "A";
-  rec.content = "192.168.1.1";
+  rec.content = "144.82.111.20";
   rec.ttl = 1000;
   rec2.type = "A";
-  rec2.content = "63.205.254.10";
+  rec2.content = "171.67.216.18";
   rec2.ttl  = 3600;
- 
+  rec3.type = "A";
+  rec3.content = "4.1.4.255"; 
+  rec3.ttl = 3600;
+  rec4.type = "A";
+  rec4.content = "128.112.128.81";
+  rec4.ttl = 60;
+
   sd.records.push_back(rec);
   sd.records.push_back(rec2);
+  sd.records.push_back(rec3);
+  sd.records.push_back(rec4);
 
   test = xdr2str (sd, false);
   test_key = sd.fqdn;

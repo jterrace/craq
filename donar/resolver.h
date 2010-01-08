@@ -42,19 +42,37 @@ typedef callback<void, ClientRegion>::ref cb_cr;
 class SubdomainInfo {
   public:
     time_t validated; // How stale
+    bool rules_populated; // Do we have rules yet from optimization
     subdomain storage; // CRAQ storage struct
 
     // For each client region, maps a time value to a request volume.
-    unordered_map<ClientRegion, unordered_map<size_t, unsigned int>, 
+    unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*, 
       ClientRegionHash, ClientRegionEqual> num_requests;
+
+    // Returns the request proportions from each client in last
+    // N minutes.
+    vector<pair<ClientRegion, float> > get_client_props(int minutes);
+
+    // Populate my routing rules
+    void calculate_optimal_routes(CLOSURE);
 
     // For each record, for each client region, store the probability
     // of routing to that client region.
-    vector<pair<record, unordered_map<ClientRegion*, float> > > rules;
+    vector<pair<record, unordered_map<ClientRegion, float, 
+      ClientRegionHash, ClientRegionEqual> > > rules;
+
 };
 
-typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>, 
-      ClientRegionHash, ClientRegionEqual>::iterator num_requests_iter;
+typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*, 
+      ClientRegionHash, ClientRegionEqual>::iterator client_requests_iter;
+
+typedef unordered_map<size_t, unsigned int>::iterator num_request_iter;
+
+typedef vector<pair<record, unordered_map<ClientRegion, float, 
+  ClientRegionHash, ClientRegionEqual> > >::iterator rules_iter;
+
+typedef unordered_map<ClientRegion, float, ClientRegionHash,
+  ClientRegionEqual>::iterator client_rule_iter;
 
 class SubdomainEqual {
   public:
@@ -67,5 +85,3 @@ class SubdomainHash {
 };
 
 typedef callback<void, SubdomainInfo*>::ref cb_sub;
-
-//void assure_in_cache(string fqdn, CLOSURE);

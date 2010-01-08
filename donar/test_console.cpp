@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sstream>
 #include <iostream>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -12,20 +13,41 @@
 #include <arpa/inet.h>
 
 #define SOCK_PATH "echo_socket"
-#define BUFF_SIZE 1000
+#define BUFF_SIZE 10000
 
 using namespace std;
 
 int main(void)
 {
-    int unix_sock, listen_1, listen_2, listen_3, t, len;
-    int accept_sock;
-    struct sockaddr_un unix_sockaddr;
+    int listen_1, listen_2, listen_3, len;
+    int accept_sock, backend_sock;
+    //struct sockaddr_un unix_sockaddr;
+    struct sockaddr_in backend_sockaddr;
     struct sockaddr_in listen_sockaddr;
     struct sockaddr_in peer_sockaddr;
     socklen_t addr_len;
  
     char line_buf[BUFF_SIZE];
+
+   // Backend sock
+   backend_sockaddr.sin_family = AF_INET;
+   backend_sockaddr.sin_port = htons(21000);
+   struct hostent* local;
+   local = gethostbyname("localhost");
+   struct in_addr localaddr;
+   bcopy(local->h_addr, (char*) &localaddr, sizeof(localaddr));
+   backend_sockaddr.sin_addr = localaddr;
+
+   if ((backend_sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("socket");
+        exit(1);
+    }
+    int socklen = sizeof(struct sockaddr_in);
+    if (connect(backend_sock, 
+      (struct sockaddr *)&backend_sockaddr, socklen) == -1){
+      perror("connect");
+      exit(1);
+    }
 
    // TCP socket for accepting incoming connections
     if ((listen_1 = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -33,7 +55,7 @@ int main(void)
         exit(1);
     }
     listen_sockaddr.sin_family = AF_INET;
-    listen_sockaddr.sin_port = htons(6667);
+    listen_sockaddr.sin_port = htons(21005);
     inet_aton("0.0.0.0", &listen_sockaddr.sin_addr);
 
     if ((listen_2 = bind(listen_1, 
@@ -42,16 +64,15 @@ int main(void)
       exit(1);
     }
 
-    printf("%i", listen_1);
     if (listen(listen_1, 1) != 0) {
       perror("listen");
       exit(1);
     }
-    cout << "Listening...\n";    
+    cout << "Listening for incoming requests...\n"; 
 
     addr_len = sizeof(peer_sockaddr);
-    while(accept_sock = accept(listen_1, (struct sockaddr*) &peer_sockaddr,
-      (socklen_t*) &addr_len)) {
+    while((accept_sock = accept(listen_1, (struct sockaddr*) &peer_sockaddr,
+      (socklen_t*) &addr_len)) > 0) {
         if (accept_sock == -1) {
           perror("accept");
           printf("errno:%i", errno);
@@ -62,6 +83,13 @@ int main(void)
           continue;
         }
 
+        cout << "Handling commection from: ";
+        char peer_addr[40];
+        inet_ntop(AF_INET, (const void*) 
+          &peer_sockaddr.sin_addr, peer_addr, 40);
+        cout << peer_addr;
+        cout << "\n";
+/*
 	// UNIX socket for communication with resolver
 	if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 	    perror("socket");
@@ -74,19 +102,18 @@ int main(void)
 	  perror("connect");
 	  exit(1);
 	}
-
+*/
         // Perform handshake
         char init_buff[BUFF_SIZE];
-        strcpy(init_buff, "HELO\t1");
-        if (send(unix_sock, init_buff, strlen(init_buff), 0) == -1) {
+        strcpy(init_buff, "HELO\t1\r\n");
+        if (send(backend_sock, init_buff, strlen(init_buff), 0) == -1) {
           perror("send");
           exit(1);
         }
 
-        if (recv(unix_sock, init_buff, BUFF_SIZE, 0) > 0) {
+        if (recv(backend_sock, init_buff, BUFF_SIZE, 0) > 0) {
         } else {
-          if (t < 0) perror("recv");
-          else printf("Server closed connection\n");
+          printf("Server closed connection\n");
           exit(1);
         }
 
@@ -117,17 +144,17 @@ int main(void)
           out << " IN ANY -1 ";
           if (remote_ip.length() > 0) {out << remote_ip;}
           else {out << "-1";}
+          out << "\r\n";
           strncpy(buff, out.str().c_str(), BUFF_SIZE);
           
-          cout << buff;
           fflush(stdout);
 
-  	  if (send(unix_sock, buff, strlen(buff), 0) == -1) {
+  	  if (send(backend_sock, buff, strlen(buff), 0) == -1) {
 	      perror("send");
 	      exit(1);
   	  }
-
-	  if ((t=recv(unix_sock, buff, BUFF_SIZE, 0)) > 0) {
+          int t;
+	  if ((t=recv(backend_sock, buff, BUFF_SIZE, 0)) > 0) {
 	      buff[t] = '\0';
 	      send(accept_sock, buff, strlen(buff), 0);
 	  } else {
@@ -138,7 +165,7 @@ int main(void)
       }
     }
 
-    close(unix_sock);
+    close(backend_sock);
 
     return 0;
 }

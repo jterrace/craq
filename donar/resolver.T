@@ -30,6 +30,11 @@
 #include "cppconn/resultset_metadata.h"
 #include "cppconn/exception.h"
 #include "cppconn/warning.h"
+#include "coin/ClpSimplex.hpp"
+#include "coin/CoinHelperFunctions.hpp"
+#include "coin/CoinTime.hpp"
+#include "coin/CoinBuild.hpp"
+#include "coin/CoinModel.hpp"
 #include <tr1/unordered_map>
 #include <tr1/unordered_set>
 
@@ -134,6 +139,65 @@ size_t SubdomainHash::operator()(const SubdomainInfo &s) const {
   return out;
 }
 
+tamed static void get_client_region(string ip, cb_cr cb) {
+  tvars {
+    Statement *st;
+    ResultSet *res;
+    float lat_f;
+    float lon_f;
+    int lat_d;
+    int lon_d;
+    int lat_d_rounded;
+    int lon_d_rounded;
+    struct in_addr addr;
+  }
+  if (DEBUG) {
+    cout << "Quova lookup requested for " << ip << endl;
+    fflush(stdout);
+  }
+  // In cache?
+  inet_aton(ip.c_str(), &addr);
+  location_cache_it = location_cache.find(addr.s_addr);
+  if (location_cache_it != location_cache.end()) {
+    TRIGGER(cb, location_cache_it->second);
+    return;
+  }
+  st = quova_conn->createStatement();
+  res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
+    SELECT MAX(start_ip_int) FROM quova b\
+    WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
+    AND a.end_ip_int >= INET_ATON('" + ip + "');");
+
+  lat_f = 0;
+  lon_f = 0;
+
+  while (res->next()) {
+    lat_f = static_cast<float>(res->getInt("latitude"));
+    lon_f = static_cast<float>(res->getInt("longitude"));
+  }
+  lat_d = static_cast<int>(lat_f);
+  lon_d = static_cast<int>(lon_f);
+
+  // Binning
+  lat_d_rounded = lat_d - (lat_d % 5);
+  lon_d_rounded = lon_d - (lon_d % 5);
+ 
+  ClientRegion out = ClientRegion(lat_d_rounded, lon_d_rounded);
+
+  if (location_cache.size() > 300) {
+    location_cache.erase(location_cache.begin()->first);
+  }
+  
+  location_cache.insert(pair<unsigned long, ClientRegion>(addr.s_addr, out));
+  
+  if (DEBUG) {
+    cout << "Returning client region from quova lookup: " <<  out << endl;
+    fflush(stdout);
+  }
+  TRIGGER(cb, out);
+}
+
+
 void print_request_logs(SubdomainInfo* sd) {
   client_requests_iter it = sd->num_requests.begin();
   cout << sd->storage.fqdn << endl;
@@ -204,62 +268,133 @@ void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
   }
 }
 
-tamed static void get_client_region(string ip, cb_cr cb) {
+tamed void SubdomainInfo::calculate_optimal_routes() {
   tvars {
-    Statement *st;
-    ResultSet *res;
-    float lat_f;
-    float lon_f;
-    int lat_d;
-    int lon_d;
-    int lat_d_rounded;
-    int lon_d_rounded;
-    struct in_addr addr;
+  vector<pair<ClientRegion, float> > props;
+  vector<pair<ClientRegion, float> >::iterator it;
+  int num_clients;
+  int num_servers;
+  ClientRegion other;
+  ClientRegion cr;
+  vector<float> coeffs;
+  int i, j;
+  int distance;
+  float distance_norm;
+  ClpSimplex model;
+  CoinBuild build_object;
+  vector<int> indices;
+  int problem_size;
+  vector<double> temp_row;
+  double* solution;
   }
-  if (DEBUG) {
-    cout << "Quova lookup requested for " << ip << endl;
-    fflush(stdout);
-  }
-  // In cache?
-  inet_aton(ip.c_str(), &addr);
-  location_cache_it = location_cache.find(addr.s_addr);
-  if (location_cache_it != location_cache.end()) {
-    TRIGGER(cb, location_cache_it->second);
-    return;
-  }
-  st = quova_conn->createStatement();
-  res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
-    SELECT MAX(start_ip_int) FROM quova b\
-    WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
-    AND a.end_ip_int >= INET_ATON('" + ip + "');");
 
-  lat_f = 0;
-  lon_f = 0;
-
-  while (res->next()) {
-    lat_f = static_cast<float>(res->getInt("latitude"));
-    lon_f = static_cast<float>(res->getInt("longitude"));
-  }
-  lat_d = static_cast<int>(lat_f);
-  lon_d = static_cast<int>(lon_f);
-
-  // Binning
-  lat_d_rounded = lat_d - (lat_d % 5);
-  lon_d_rounded = lon_d - (lon_d % 5);
- 
-  ClientRegion out = ClientRegion(lat_d_rounded, lon_d_rounded);
-
-  if (location_cache.size() > 300) {
-    location_cache.erase(location_cache.begin()->first);
-  }
+  // Get client proportions
+  props = this->get_client_props(10);
+  it = props.begin();
   
-  location_cache.insert(pair<unsigned long, ClientRegion>(addr.s_addr, out));
-  
-  if (DEBUG) {
-    cout << "Returning client region from quova lookup: " <<  out << endl;
-    fflush(stdout);
+  num_clients = props.size();
+  num_servers = this->storage.records.size();
+  problem_size = num_clients * num_servers;
+
+  cout << "Number of clients: " << num_clients;
+  cout << " Number of servers: " << num_servers;
+
+  // Create coefficient vector of Rci's (R11, R12, R13...)
+  coeffs = vector<float> (problem_size, 0.0); // TODO remove
+  indices = vector<int> (problem_size);
+  for (i = 0; i < (problem_size); i++) {
+    indices[i] = i;
   }
-  TRIGGER(cb, out);
+
+  model.resize(0, problem_size);
+  model.setOptimizationDirection(-1);
+
+  // Coefficient of an Rci should be prop_c * dist_ci
+  for (i = 0; i < num_clients; i++) {
+    temp_row = vector<double> (problem_size, 0);
+    for (j = 0; j < num_servers; j++) {
+      twait{get_client_region(
+        this->storage.records[j].content.cstr(), mkevent(other));}
+        cr = props[i].first;
+      distance = ((cr.lat - other.lat) * (cr.lat - other.lat)) +
+        ((cr.lon - other.lon) * (cr.lon - other.lon));
+      distance_norm = (float) distance / (350 * 350);
+      coeffs[(i * num_servers) + j] = distance_norm * props[i].second;
+      model.setObjectiveCoefficient(
+        (i * num_servers) + j, distance_norm * props[i].second);
+      temp_row[i * num_servers + j] = 1;
+    }
+    build_object.addRow(problem_size, const_cast<const int*> (&indices[0]), 
+      const_cast<const double*> (&temp_row[0]), 1.0, 1.0);
+  } 
+  model.addRows(build_object, true);
+  model.dual();
+  solution = model.primalColumnSolution();
+
+  cout << "Answers\n";
+  for (i = 0; i < problem_size; i++) {
+    cout << solution[i];
+    cout << "\n";
+  }
+}
+
+void client_debug() {
+  subdomain_cache_it = subdomain_cache.begin();
+  cout << "Running optimization\n\n";
+  while (subdomain_cache_it != subdomain_cache.end()) {
+    SubdomainInfo* sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
+    cout << sd->storage.fqdn.cstr();
+    cout << "\n";
+    sd->calculate_optimal_routes();
+
+    subdomain_cache_it++;
+  }
+
+  delaycb(5, 0, wrap(client_debug));
+
+}
+
+vector<pair<ClientRegion, float> > 
+  SubdomainInfo::get_client_props(int minutes) {
+  vector<pair<ClientRegion, unsigned int> > totals;
+  vector<pair<ClientRegion, float> > out;
+  unsigned int total_volume = 0;
+
+  size_t now = time(NULL);
+  client_requests_iter client_it;
+  client_it = this->num_requests.begin();
+
+  while (client_it != this->num_requests.end()) {
+    unordered_map<size_t, unsigned int>* requests = client_it->second;
+    num_request_iter time_it;
+    time_it = requests->begin();
+    unsigned int client_total = 0;
+    while(time_it != requests->end()) {
+      if (time_it->first > (now - (minutes * 60))) {
+        client_total += time_it->second;
+        total_volume += time_it->second;
+      }
+      time_it++;
+    }
+  
+    totals.push_back(pair<ClientRegion, unsigned int> 
+      (client_it->first, client_total));
+    client_it++;
+  }
+
+  // Now all client traffic has been recorded, so go back and normalize
+  vector<pair<ClientRegion, unsigned int> >::iterator totals_it =
+    totals.begin();
+  while (totals_it != totals.end()) {
+    cout << "Adding region (" << totals_it->first.lat << ", ";
+    cout << totals_it->first.lon << ") ";
+    cout << "Total traffic for this region " << totals_it->second << "\n";
+    out.push_back(pair<ClientRegion, float> 
+      (totals_it->first, (float) totals_it->second / total_volume));
+    totals_it++;
+  }
+
+  return out;
 }
 
 // Return a subset of the A records for SubdomainInfo as determined
@@ -501,6 +636,17 @@ tamed static void process(int fd) {
   return;
 }
 
+/*
+// Return a set of request-routing rules given:
+// clients: An list of clients with correspoding proportions
+// records: A list of records
+  vector<pair<record, unordered_map<ClientRegion, float,
+  ClientRegionHash, ClientRegionEqual> > > get_rules(
+  vector<pair<ClientRegion, float> > clients, vector<record> records) {
+
+}
+*/
+
 tamed static void listen_loop() {
   tvars {
     int s, fd, len;
@@ -611,6 +757,9 @@ tamed static void main2(int argc, char** argv) {
 
   // Periodically clean old data
   delaycb(LOG_CLEAN_INTERVAL_MINS * 60, 0, wrap(clean_request_logs));
+
+  // Temporary debug
+  delaycb(5, 0, wrap(client_debug));
 
   // Setup craq connection
   twait {
