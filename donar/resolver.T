@@ -30,11 +30,15 @@
 #include "cppconn/resultset_metadata.h"
 #include "cppconn/exception.h"
 #include "cppconn/warning.h"
+#include "QuadProg++.hh"
+/*
+#include <glpk.h>
 #include "coin/ClpSimplex.hpp"
 #include "coin/CoinHelperFunctions.hpp"
 #include "coin/CoinTime.hpp"
 #include "coin/CoinBuild.hpp"
 #include "coin/CoinModel.hpp"
+*/
 #include <tr1/unordered_map>
 #include <tr1/unordered_set>
 
@@ -51,11 +55,13 @@ str zoo_list;
 
 using namespace std;
 using namespace sql;
+using namespace QuadProgPP;
 
 const unsigned int MAX_BUFF = 1000;
 Connection* quova_conn;
 Connection* donar_conn;
 craq_interface craq;
+unsigned int my_ip_addr;
 
 string last; // PDNS hack
 
@@ -268,7 +274,184 @@ void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
   }
 }
 
-tamed void SubdomainInfo::calculate_optimal_routes() {
+// Take traffic over the last <minutes> minutes, and calculate the
+// expected traffic load on each server given the current routing policy.
+tamed void SubdomainInfo::update_expected_traffic(int minutes) {
+  tvars {
+    size_t now;
+    client_requests_iter client_it;
+    unordered_map<size_t, unsigned int>* requests;
+    vector<pair<record, unsigned int>> to_add;
+    vector<pair<record, unsigned int>>::iterator to_add_it;
+    num_request_iter time_it;
+    rules_iter rules_it;
+    client_rule_iter c_rule_it;
+    vector<pair<record, float>> rules;
+    str subdomain_data;
+    struct subdomain_opt sd_opt;
+    int i, j;
+    bool seen;
+    string opt_key, result;
+    struct traffic_entry new_entry;
+    struct rec_opt_info new_rec_opt;
+  }
+  client_it = this->num_requests.begin();
+  now = time(NULL);
+
+  // Populate record list with blanks
+  for (i=0; i < this->storage.records.size(); i++) {
+    to_add.push_back(pair<record, unsigned int> (this->storage.records[i], 0));
+  }
+
+  // TODO fix N^2 components here
+
+  // Iterate through client regions
+  while (client_it != this->num_requests.end()) {
+    requests = client_it->second;
+    rules_it = this->rules.find(client_it->first);
+    if (rules_it == this->rules.end()) continue;
+    // We have rules for this client...
+    time_it = requests->begin();
+    while(time_it != requests->end()) {
+      // Do we consider this time-period?
+      if (time_it->first > (now - (minutes * 60))) {
+        // For each record add the expected traffic from this client
+        // group.
+        to_add_it = to_add.begin();
+        while (to_add_it != to_add.end()) {
+          c_rule_it = rules_it->second.begin();
+          while (c_rule_it != rules_it->second.end()) {
+           if (c_rule_it->first.content == to_add_it->first.content ) {
+              to_add_it->second += c_rule_it->second * time_it->second;
+            }
+            c_rule_it++;
+          }
+          to_add_it++;
+        }  
+      }
+      time_it++;
+    }
+    client_it++;
+  }
+
+  opt_key = this->storage.fqdn.cstr();
+  opt_key += "-opt";
+  twait {craq.get_key(opt_key, mkevent(subdomain_data));}
+
+  if (subdomain_data.len() < 20) {
+      cout << "CRAQ does not have optimization info for \n" << 
+        this->storage.fqdn.cstr();
+      // Add blank entries for existing records
+      sd_opt.fqdn = this->storage.fqdn;
+      for (i=0; i < this->storage.records.size(); i++) {
+        new_rec_opt.content = this->storage.records[i].content;
+        // TODO fill in proportion
+        sd_opt.records.push_back(new_rec_opt);
+      }
+  }
+  else {
+    str2xdr (sd_opt, subdomain_data);
+  }
+
+  to_add_it = to_add.begin();
+
+  // Look at each record in the optimization entry
+  for (i=0; i < sd_opt.records.size(); i++) {
+    to_add_it = to_add.begin();
+    // Now see if we have a traffic value for this record
+    while (to_add_it != to_add.end()) {
+      if (sd_opt.records[i].content == to_add_it->first.content) {
+        // We have something to add, so add it...
+        for (j=0; j<sd_opt.records[i].entries.size(); j++) {
+          if (sd_opt.records[i].entries[j].server_id == my_ip_addr) {
+            sd_opt.records[i].entries[j].update_time = time(NULL);
+            sd_opt.records[i].entries[j].traffic_vol = 
+              to_add_it->second;
+            seen = true;
+          }
+        }
+        if (seen == false) {
+          new_entry.server_id = my_ip_addr;
+          new_entry.update_time = time(NULL);
+          new_entry.traffic_vol = to_add_it->second;
+          sd_opt.records[i].entries.push_back(new_entry);
+        }
+        seen = false;
+      }
+      to_add_it++;
+    }
+  }
+
+  subdomain_data = xdr2str(sd_opt);
+  twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
+    mkevent(result));}
+
+  // Print out totals
+  to_add_it = to_add.begin();
+  if (DEBUG) {
+    cout << "Totals\n:";
+    while (to_add_it != to_add.end()) {
+      cout << to_add_it->first.content;
+      cout << " ";
+      cout << to_add_it->second;
+      cout << "\n";
+      to_add_it++;
+    }
+  }
+}
+
+// Probe the CRAQ backend to get the wide-area totals of traffic being routed
+// to an instance.
+tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
+  tvars {
+    unordered_map <string, unsigned int> out;
+    string opt_key;
+    str subdomain_data;
+    struct subdomain_opt sd_opt;
+    int i;
+    int j;
+    unsigned int instance_total;
+    unsigned int subdomain_total;
+  }
+
+  opt_key = this->storage.fqdn.cstr();
+  opt_key += "-opt";
+  twait {craq.get_key(opt_key, mkevent(subdomain_data));}
+
+  if (subdomain_data.len() < 14) {
+    if (DEBUG) {
+      cout << "Request to get total traffic failed since data not in CRAQ: ";
+      cout << this->storage.fqdn.cstr() << "\n";
+    }
+    for (i=0; i < this->storage.records.size(); i++) {
+      out.insert(pair <string, unsigned int> (
+        string(this->storage.records[i].content), 0));
+    }
+  }
+
+  str2xdr (sd_opt, subdomain_data);
+  for (i=0; i < sd_opt.records.size(); i++) {
+    instance_total = 0;
+    // Sum contribution from all nodes
+    for (j=0; j < sd_opt.records[i].entries.size(); j++) {
+      instance_total += sd_opt.records[i].entries[j].traffic_vol;
+    }
+    subdomain_total += instance_total;
+    if (DEBUG) {
+      cout << "Adding the total for record: " << 
+        sd_opt.records[i].content.cstr() << " " << instance_total << "\n";
+    }
+
+    out.insert(pair <string, unsigned int> (
+      string(sd_opt.records[i].content.cstr()), instance_total));
+  }
+
+  TRIGGER(cb, out, subdomain_total);
+}
+
+// Use traffic from other nodes, alongside local client information, to
+// calculate optimal routes.
+tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   tvars {
   vector<pair<ClientRegion, float> > props;
   vector<pair<ClientRegion, float> >::iterator it;
@@ -280,18 +463,30 @@ tamed void SubdomainInfo::calculate_optimal_routes() {
   int i, j;
   int distance;
   float distance_norm;
-  ClpSimplex model;
-  CoinBuild build_object;
   vector<int> indices;
   int problem_size;
   vector<double> temp_row;
   double* solution;
+  unordered_map<ClientRegion, vector<pair<record, float> >, 
+      ClientRegionHash, ClientRegionEqual > new_rules;
+  vector<pair<record, float> > client_rules;
+  Vector<double> g0, ce0, ci0, x, temp_vec;
+  Matrix<double> G, CE, CI;
+  double temp;
+  unordered_map <string, unsigned int> totals;
+  unordered_map <string, unsigned int>::iterator totals_it;
+  unsigned int total_traffic;
   }
-
+  TRIGGER(cb);
+/*
+  // Get global data
+  twait { get_traffic_totals(mkevent(totals, total_traffic)); }  
+   
   // Get client proportions
   props = this->get_client_props(10);
   it = props.begin();
   
+  cout << "Calculating optimal policy for " << this->storage.fqdn << "\n";
   num_clients = props.size();
   num_servers = this->storage.records.size();
   problem_size = num_clients * num_servers;
@@ -300,18 +495,33 @@ tamed void SubdomainInfo::calculate_optimal_routes() {
   cout << " Number of servers: " << num_servers;
 
   // Create coefficient vector of Rci's (R11, R12, R13...)
-  coeffs = vector<float> (problem_size, 0.0); // TODO remove
+  G.resize(problem_size, problem_size);
+  g0.resize(problem_size);
+  x.resize(problem_size);
+  ce0.resize(num_clients);
+  ci0.resize(0);  
+  CE.resize(problem_size, num_clients);
+  CI.resize(problem_size, 0);
+
+  temp = 1.0;
+  for (i = 1; i <= problem_size; i++) {
+    for (j = 1; j <= problem_size; j++) {
+      G.set(&temp, i, j);    
+    }
+  }
+  cout << "SIZE";
+  cout << G.nrows();
+  cout << G.ncols();
+
   indices = vector<int> (problem_size);
-  for (i = 0; i < (problem_size); i++) {
+  for (i = 0; i < (problem_size + 1); i++) {
     indices[i] = i;
   }
 
-  model.resize(0, problem_size);
-  model.setOptimizationDirection(-1);
-
-  // Coefficient of an Rci should be prop_c * dist_ci
+  temp_vec.resize(problem_size);
+  // Coefficient of an Rci should be alpha_c * dist_ci
   for (i = 0; i < num_clients; i++) {
-    temp_row = vector<double> (problem_size, 0);
+    ce0[i] = -1.0;
     for (j = 0; j < num_servers; j++) {
       twait{get_client_region(
         this->storage.records[j].content.cstr(), mkevent(other));}
@@ -319,39 +529,48 @@ tamed void SubdomainInfo::calculate_optimal_routes() {
       distance = ((cr.lat - other.lat) * (cr.lat - other.lat)) +
         ((cr.lon - other.lon) * (cr.lon - other.lon));
       distance_norm = (float) distance / (350 * 350);
-      coeffs[(i * num_servers) + j] = distance_norm * props[i].second;
-      model.setObjectiveCoefficient(
-        (i * num_servers) + j, distance_norm * props[i].second);
-      temp_row[i * num_servers + j] = 1;
+      g0[i * num_servers + j] = distance_norm * props[i].second; 
+      temp_vec[i * num_servers + j] = 1.0;
     }
-    build_object.addRow(problem_size, const_cast<const int*> (&indices[0]), 
-      const_cast<const double*> (&temp_row[0]), 1.0, 1.0);
-  } 
-  model.addRows(build_object, true);
-  model.dual();
-  solution = model.primalColumnSolution();
-
-  cout << "Answers\n";
-  for (i = 0; i < problem_size; i++) {
-    cout << solution[i];
-    cout << "\n";
+    CE.setColumn(i, temp_vec);
+    temp_vec = Vector<double> ();
   }
+
+//  solve_quadprog(G, g0, CE, ce0, CI, ci0, x);
+
+  for (i = 0; i < num_clients; i++) {
+    client_rules = vector<pair<record, float> > ();
+    for (j = 0; j < num_servers; j++) {
+      client_rules.push_back(pair<record, float> 
+        (this->storage.records[j], 1.0));//x[i * num_servers + j]));
+    }
+    new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
+      props[i].first, client_rules));
+  }
+  this->rules = new_rules;
+*/
 }
+void client_debug(callback<void>::ref cb, CLOSURE);
 
-void client_debug() {
-  subdomain_cache_it = subdomain_cache.begin();
-  cout << "Running optimization\n\n";
-  while (subdomain_cache_it != subdomain_cache.end()) {
-    SubdomainInfo* sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
-    cout << sd->storage.fqdn.cstr();
-    cout << "\n";
-    sd->calculate_optimal_routes();
-
-    subdomain_cache_it++;
+tamed void client_debug(callback<void>::ref cb) {
+  tvars {
+    SubdomainInfo* sd;
   }
 
-  delaycb(5, 0, wrap(client_debug));
+  while (true) {
+    subdomain_cache_it = subdomain_cache.begin();
+    //cout << "Running optimization\n\n";
+    while (subdomain_cache_it != subdomain_cache.end()) {
+      sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
+      cout << sd->storage.fqdn.cstr();
+      cout << "\n";
+      twait{ sd->calculate_optimal_routes(mkevent()); }
+      sd->update_expected_traffic(10);
 
+      subdomain_cache_it++;
+    }
+    sleep(10);
+  }
 }
 
 vector<pair<ClientRegion, float> > 
@@ -412,32 +631,32 @@ tamed static void get_a_records(SubdomainInfo* sd, ClientRegion* cr,
     vector<pair<record, float> > rules;
     rules_iter r_it;
     bool rules_present;
-    client_rule_iter c_it;
     unordered_map<ClientRegion, float, ClientRegionHash, ClientRegionEqual> 
       this_rec;
-
+    vector<pair<record, float> >::iterator record_it;
+    double cumulative;
+    double random;
   }
   rules_present = false;
+  r_it = sd->rules.find(*cr);
 
-  r_it = sd->rules.begin();
-  while (r_it != sd->rules.end()) {
-    // For each record
+  if (r_it != sd->rules.end()) {
     rules_present = true;
-    this_rec = r_it->second;
-      
-    c_it = this_rec.find(*cr);
-    if (c_it != this_rec.end()) {
-      // For this client find out the probability of routing
-      rules.push_back(pair<record, float>(r_it->first, c_it->second));
-      ++c_it;
+    record_it = r_it->second.begin();
+    cumulative = 0.0;
+    random = (double) rand() / ((double) RAND_MAX + (double) 1);
+    while (record_it != r_it->second.end()) {
+      cumulative += record_it->second;
+      if (cumulative > random) {
+        out.push_back(record_it->first);
+        TRIGGER(cb, out);
+        return;
+      }
+      record_it++;
     }
-    else {
-      rules_present = false;
-      break;
-    }
-    ++r_it;
+    // Shouldn't ever get here
   }
-
+  
   // If we don't have rules yet, just use proximity
   if (!rules_present) {
     if (DEBUG) cout << "Didn't find rules for this record.\n";
@@ -478,12 +697,17 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     cout << "Getting key";
     fflush(stdout);
     twait {craq.get_key(fqdn, mkevent(subdomain_data));}
+    if (subdomain_data.len() < 20) {
+      cout << "CRAQ did not have data for this record\n";
+      TRIGGER(cb, NULL);
+      return;
+    }
+
     cout << "Got value of size " << subdomain_data.len();
     cout << subdomain_data;
     fflush(stdout);
     str2xdr(sd, subdomain_data);
 
-    // TODO deal with not found
     to_insert.storage = sd;
     to_insert.rules_populated = false;
     to_insert.validated = time(NULL);
@@ -506,9 +730,10 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
       to_insert.rules_populated = false;
       to_insert.validated = time(NULL);
       subdomain_cache.erase(subdomain_cache_it);
-      subdomain_cache.insert(to_insert); // This will overwrite (?)
+      subdomain_cache.insert(to_insert);
       if (DEBUG) {
         cout << "Sequence number too low, updating record";
+        cout << "New data length: " << subdomain_data.len();
         fflush(stdout);
       }
       TRIGGER(cb,
@@ -592,33 +817,33 @@ tamed static void process(int fd) {
       }
       else {
         twait {get_from_cache(qname, mkevent(sd));}
-        if (sd == NULL) break;
-        log_client_request(&cr, sd);
-        print_request_logs(sd);
+        if (sd != NULL) {
+	  log_client_request(&cr, sd);
+	  print_request_logs(sd);
 
-        // Get A Records according to optimal policy
-        if (qtype == "A" || qtype == "ANY") {
-          twait {get_a_records(sd, &cr, mkevent(recs));}
-          vector<record>::iterator it = recs.begin();
-          while (it != recs.end()) {
-             out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
-            sd->storage.fqdn.cstr(), it->type.cstr(),
-            it->ttl, it->content.cstr()); 
-            ++it;
-          }
+	  // Get A Records according to optimal policy
+	  if (qtype == "A" || qtype == "ANY") {
+	    twait {get_a_records(sd, &cr, mkevent(recs));}
+	    vector<record>::iterator it = recs.begin();
+	    while (it != recs.end()) {
+	       out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
+	      sd->storage.fqdn.cstr(), it->type.cstr(),
+	      it->ttl, it->content.cstr()); 
+	      ++it;
+	    }
+	  }
+	  // Add other records
+	  for (int i = 0; i < sd->storage.records.size(); i++) {
+	     rec = sd->storage.records[i];
+	     if ((rec.type != "A") && 
+	       (qtype == "ANY" || qtype == rec.type.cstr())) {
+	       out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
+		sd->storage.fqdn.cstr(), rec.type.cstr(), 
+		rec.ttl, rec.content.cstr());
+	     }
+	  }
+	  last = string(str(out).cstr());
         }
-        // Add other records
-        for (int i = 0; i < sd->storage.records.size(); i++) {
-           rec = sd->storage.records[i];
-           if ((rec.type != "A") && 
-             (qtype == "ANY" || qtype == rec.type.cstr())) {
-             out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
-              sd->storage.fqdn.cstr(), rec.type.cstr(), 
-              rec.ttl, rec.content.cstr());
-           }
-        }
-
-        last = string(str(out).cstr());
       }
       out << "END\n";    
     }
@@ -705,7 +930,6 @@ tamed static void main2(int argc, char** argv) {
     ofstream logfile;
     Driver *driver;
     Statement *quova_stmt;
-    Statement *donar_stmt;
     bool init_success;
     int log_clean_interval;
     conftab ct;
@@ -715,6 +939,7 @@ tamed static void main2(int argc, char** argv) {
     int line;
     bool errors;
     parseargs pa("donar.conf", -1);
+    struct in_addr addr;
   }
   /*
   while ((ch = getopt(argc, argv, "C")) != -1) {
@@ -751,20 +976,21 @@ tamed static void main2(int argc, char** argv) {
     mysql_pass.cstr());  
 
   quova_stmt = quova_conn->createStatement();
-  donar_stmt = donar_conn->createStatement();
   quova_stmt->execute("USE quova");
-  donar_stmt->execute("USE namecast");
 
   // Periodically clean old data
   delaycb(LOG_CLEAN_INTERVAL_MINS * 60, 0, wrap(clean_request_logs));
 
   // Temporary debug
-  delaycb(5, 0, wrap(client_debug));
+  twait { client_debug(mkevent()); }
 
   // Setup craq connection
   twait {
     craq.init(string(zoo_list.cstr()), mkevent(init_success));
   }
+
+  inet_aton(craq.my_ip_addr.c_str(), &addr);
+  my_ip_addr = (unsigned int) addr.s_addr;
 
   if (init_success) {
     if (DEBUG) cout << "Connection established.\n";
