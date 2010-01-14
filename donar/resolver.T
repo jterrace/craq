@@ -51,7 +51,7 @@ str zoo_list;
 #define MAX_CACHE_PERIOD 10
 #define LOG_EXPIRY_MINUTES 15
 #define LOG_CLEAN_INTERVAL_MINS 15
-#define MAX_A_RECORDS 10
+#define MAX_A_RECORDS 1
 
 using namespace std;
 using namespace sql;
@@ -203,6 +203,32 @@ tamed static void get_client_region(string ip, cb_cr cb) {
   TRIGGER(cb, out);
 }
 
+// Given a subdomain and a client region, returns the closest n records,
+// with the closest one first.
+tamed static void closest_n_records(SubdomainInfo* sd, ClientRegion* cr, int
+ n, callback<void, vector<record> >::ref cb) {
+  tvars {
+    record rec;
+    multimap<int, record> by_distance;
+    multimap<int, record>::iterator by_distance_it;
+    int i;
+    vector<record> out;
+    ClientRegion other;
+  }
+  for (i = 0; i < sd->storage.records.size(); i++) {
+    rec = sd->storage.records[i];
+    twait{get_client_region(rec.content.cstr(), mkevent(other));}
+    int distance = ((cr->lat - other.lat) * (cr->lat - other.lat)) +
+      ((cr->lon - other.lon) * (cr->lon - other.lon));
+    by_distance.insert(pair<int, record>(distance, rec));
+  }
+  by_distance_it = by_distance.begin();
+  for (i = 0; (i < by_distance.size()) && (i < n); i++) {
+    out.push_back(by_distance_it->second);
+    by_distance_it++;
+  }
+  TRIGGER(cb, out);
+}
 
 void print_request_logs(SubdomainInfo* sd) {
   client_requests_iter it = sd->num_requests.begin();
@@ -276,7 +302,8 @@ void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
 
 // Take traffic over the last <minutes> minutes, and calculate the
 // expected traffic load on each server given the current routing policy.
-tamed void SubdomainInfo::update_expected_traffic(int minutes) {
+tamed void SubdomainInfo::update_expected_traffic(int minutes,
+    callback<void>::ref cb) {
   tvars {
     size_t now;
     client_requests_iter client_it;
@@ -294,6 +321,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes) {
     string opt_key, result;
     struct traffic_entry new_entry;
     struct rec_opt_info new_rec_opt;
+    vector<record> recs;
   }
   client_it = this->num_requests.begin();
   now = time(NULL);
@@ -309,7 +337,32 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes) {
   while (client_it != this->num_requests.end()) {
     requests = client_it->second;
     rules_it = this->rules.find(client_it->first);
-    if (rules_it == this->rules.end()) continue;
+    if (rules_it == this->rules.end()) {
+      // If we don't have any rules, we must be mapping to closest node
+      // so store expected traffic as if mapping to closest node
+      twait{closest_n_records(this, const_cast<ClientRegion*>( 
+        &(client_it->first)), 1, mkevent(recs));}
+      if (recs.size() == 0) {
+        client_it++;
+        continue;
+      }
+      time_it = requests->begin();
+      
+      while (time_it != requests->end()) {
+        if (time_it->first > (now - (minutes * 60))) {
+          to_add_it = to_add.begin();
+          while (to_add_it != to_add.end()) {
+            if (recs[0].content == to_add_it->first.content ) {
+              to_add_it->second += 1.0 * time_it->second;
+            }
+            to_add_it++;
+          }
+        }
+        time_it++;
+      }
+      client_it++;
+      continue;
+    }
     // We have rules for this client...
     time_it = requests->begin();
     while(time_it != requests->end()) {
@@ -383,6 +436,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes) {
   }
 
   subdomain_data = xdr2str(sd_opt);
+  cout << "Setting update traffic volume for " << opt_key;
   twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
     mkevent(result));}
 
@@ -398,6 +452,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes) {
       to_add_it++;
     }
   }
+  TRIGGER(cb);
 }
 
 // Probe the CRAQ backend to get the wide-area totals of traffic being routed
@@ -410,6 +465,7 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
     struct subdomain_opt sd_opt;
     int i;
     int j;
+    unsigned int other_instance_total;
     unsigned int instance_total;
     unsigned int subdomain_total;
   }
@@ -418,7 +474,7 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
   opt_key += "-opt";
   twait {craq.get_key(opt_key, mkevent(subdomain_data));}
 
-  if (subdomain_data.len() < 14) {
+  if (subdomain_data.len() < 30) {
     if (DEBUG) {
       cout << "Request to get total traffic failed since data not in CRAQ: ";
       cout << this->storage.fqdn.cstr() << "\n";
@@ -429,21 +485,27 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
     }
   }
 
+  if (DEBUG) cout << "Got traffic totals for " << this->storage.fqdn.cstr() <<
+   "\n";
   str2xdr (sd_opt, subdomain_data);
   for (i=0; i < sd_opt.records.size(); i++) {
+    other_instance_total = 0;
     instance_total = 0;
     // Sum contribution from all nodes
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
       instance_total += sd_opt.records[i].entries[j].traffic_vol;
+      if (sd_opt.records[i].entries[j].server_id != my_ip_addr) {
+        other_instance_total += sd_opt.records[i].entries[j].traffic_vol;
+      }
     }
     subdomain_total += instance_total;
     if (DEBUG) {
       cout << "Adding the total for record: " << 
-        sd_opt.records[i].content.cstr() << " " << instance_total << "\n";
+        sd_opt.records[i].content.cstr() << " " << other_instance_total << "\n";
     }
 
     out.insert(pair <string, unsigned int> (
-      string(sd_opt.records[i].content.cstr()), instance_total));
+      string(sd_opt.records[i].content.cstr()), other_instance_total));
   }
 
   TRIGGER(cb, out, subdomain_total);
@@ -477,10 +539,10 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   unordered_map <string, unsigned int>::iterator totals_it;
   unsigned int total_traffic;
   }
-  TRIGGER(cb);
-/*
+
   // Get global data
   twait { get_traffic_totals(mkevent(totals, total_traffic)); }  
+ 
    
   // Get client proportions
   props = this->get_client_props(10);
@@ -538,6 +600,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
 //  solve_quadprog(G, g0, CE, ce0, CI, ci0, x);
 
+  // Now populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
@@ -548,7 +611,11 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       props[i].first, client_rules));
   }
   this->rules = new_rules;
-*/
+
+  // Now store expected traffic given this new policy
+  twait {this->update_expected_traffic(10, mkevent());}
+
+  TRIGGER(cb);
 }
 void client_debug(callback<void>::ref cb, CLOSURE);
 
@@ -556,22 +623,23 @@ tamed void client_debug(callback<void>::ref cb) {
   tvars {
     SubdomainInfo* sd;
   }
-
+  TRIGGER(cb);
   while (true) {
     subdomain_cache_it = subdomain_cache.begin();
-    //cout << "Running optimization\n\n";
+    cout << "Running optimization\n\n";
     while (subdomain_cache_it != subdomain_cache.end()) {
       sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
-      cout << sd->storage.fqdn.cstr();
+      cout <<  sd->storage.fqdn.cstr();
       cout << "\n";
-      twait{ sd->calculate_optimal_routes(mkevent()); }
-      sd->update_expected_traffic(10);
-
+      // Calculate optimal routes based on external traffic
+      //twait{ sd->calculate_optimal_routes(mkevent()); }
+      twait {sd->update_expected_traffic(10, mkevent());}
       subdomain_cache_it++;
     }
-    sleep(10);
+    twait { delaycb(10, 0, mkevent()); }
   }
 }
+
 
 vector<pair<ClientRegion, float> > 
   SubdomainInfo::get_client_props(int minutes) {
@@ -624,10 +692,6 @@ tamed static void get_a_records(SubdomainInfo* sd, ClientRegion* cr,
   tvars{
     ClientRegion other;
     vector<record> out; 
-    multimap<int, record> by_distance;
-    multimap<int, record>::iterator by_distance_it;
-    record rec;
-    int i;
     vector<pair<record, float> > rules;
     rules_iter r_it;
     bool rules_present;
@@ -658,22 +722,8 @@ tamed static void get_a_records(SubdomainInfo* sd, ClientRegion* cr,
   }
   
   // If we don't have rules yet, just use proximity
-  if (!rules_present) {
-    if (DEBUG) cout << "Didn't find rules for this record.\n";
-    for (i = 0; i < sd->storage.records.size(); i++) {
-      rec = sd->storage.records[i];
-      twait{get_client_region(rec.content.cstr(), mkevent(other));}
-      int distance = ((cr->lat - other.lat) * (cr->lat - other.lat)) +
-	((cr->lon - other.lon) * (cr->lon - other.lon));
-      by_distance.insert(pair<int, record>(distance, rec));
-    }
-    by_distance_it = by_distance.begin();
-    for (i = 0; (i < by_distance.size()) && (i < MAX_A_RECORDS); i++) {
-      out.push_back(by_distance_it->second);
-      by_distance_it++;
-    }
-    TRIGGER(cb, out);
-  }
+  twait { closest_n_records(sd, cr, MAX_A_RECORDS, mkevent(out)); }
+  TRIGGER(cb, out);
 }
 
 // Gets a subdomain record from cache. May hit CRAQ if cached copy is
