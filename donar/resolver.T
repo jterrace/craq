@@ -79,7 +79,7 @@ ClientRegion::ClientRegion(int lat, int lon) {
   this->lat = lat;
   this->lon = lon;
 }
-
+ 
 ClientRegion::ClientRegion() {
 }
 
