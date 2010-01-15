@@ -30,15 +30,7 @@
 #include "cppconn/resultset_metadata.h"
 #include "cppconn/exception.h"
 #include "cppconn/warning.h"
-#include "QuadProg++.hh"
-/*
-#include <glpk.h>
-#include "coin/ClpSimplex.hpp"
-#include "coin/CoinHelperFunctions.hpp"
-#include "coin/CoinTime.hpp"
-#include "coin/CoinBuild.hpp"
-#include "coin/CoinModel.hpp"
-*/
+#include "mosek.h"
 #include <tr1/unordered_map>
 #include <tr1/unordered_set>
 
@@ -524,15 +516,18 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     int i, j, k, l;
     int distance;
     float distance_norm;
-    int problem_size;
+    int problem_size, temp_index;
     vector<double> temp_row;
     double* solution;
     unordered_map<ClientRegion, vector<pair<record, float> >, 
 	ClientRegionHash, ClientRegionEqual > new_rules;
     vector<pair<record, float> > client_rules;
-    Vector<double> g0, ce0, ci0, x, eq_vec;
-    Matrix<double> G, CE, CI;
+    MSKevn_t env;
+    MSKrescodee r;
+    MSKtask_t task;
     double temp, S_n, P_other;
+    int* quad_i, quad_j;
+    double* quad_val;
     unordered_map <string, unsigned int> totals;
     unordered_map <string, unsigned int>::iterator totals_it;
     unsigned int total_traffic;
@@ -554,46 +549,56 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   cout << "Number of clients: " << num_clients;
   cout << " Number of servers: " << num_servers;
 
-  // Create coefficient vector of Rci's (R11, R12, R13...)
-  G.resize(problem_size, problem_size);
-  g0.resize(problem_size);
-  x.resize(problem_size);
-  ce0.resize(num_clients);
-  ci0.resize(problem_size);  
-  CE.resize(problem_size, num_clients);
-  CI.resize(problem_size, problem_size);
+  r = MSK_makeenv(&env, NULL, NULL, NULL, NULL);
+  r = MSK_initenv(env);
+  r = MSK_maketask(env, num_clients, problem_size, &task);
+  r = MSK_append(task, MSK_ACC_CON, num_clients);
+  r = MSK_append(task, MSK_ACC_VAR, problem_size);
 
   S_n = 1.0;
+  
+  quad_i = new int[num_servers * num_clients * num_clients];
+  quad_j = new int[num_servers * num_clients * num_clients];
+  quad_val = new int[num_servers * num_clients * num_clients];
 
+  l = 0;
   for (i=0; i < num_servers; i++) {
     for (j=0; j < num_clients; j++) {
       quad_row = Vector<double> (problem_size);
-      for (l=0; l < problem_size; l++) quad_row[l] = 0.00;
       for (k=0; k < num_clients; k++) {
         temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
         cout << "Setting to: " << temp << "\n";
-        quad_row[k * num_servers + i] = temp;
+        quad_i[l] = j * num_servers + i;
+        quad_j[l] = k * num_servers + i;
+        quad_val[l] = temp;
+        l++;
         // row: j * num_servers + i // col: k * num_servers + i
       }
-      G.setRow(j * num_servers + i, quad_row);
     }
   }
 
-  eq_vec.resize(problem_size);
+  r = MSK_putqobj(task, num_servers * num_clients * num_clients, 
+    quad_i, quad_j, quad_val);
 
-  // Add constraints that all must be positive
+  // Add constraints that all x[] must be positive
   for (i = 0; i < problem_size; i++) {
-    quad_row = Vector<double> (problem_size);
-    for (l=0; l < problem_size; l++) quad_row[l] = 0.0;
-    quad_row[i] = 1.0;
-    CI.setRow(i, quad_row);
-    ci0[i] = 0.0;
+    MSK_putbound(task, MSK_ACC_VAR, i, MSK_BK_LO, 0.0, 0.0);
   }
 
-  // Add linear coefficients and constraints
+  // Add "sum to 1" constraints
   for (i = 0; i < num_clients; i++) {
-    ce0[i] = -1.0;
+    for (j = 0; j < num_servers; j++) {
+      temp_index = i;
+      temp = 1.0;
+      r = MSK_putavec(task, MSK_ACC_VAR, i * num_servers + j, 1, &temp_index,
+        &temp,
+      )
+    }
+    r = MSK_putbound(task, MSK_ACC_CON, i, MSK_BK_FX, 1.0, 1.0);
+  }
 
+  // Add linear coefficients
+  for (i = 0; i < num_clients; i++) {
     eq_vec = Vector<double> (problem_size);
     for (k=0; k<problem_size; k++) eq_vec[k] = 0.0;
 
@@ -605,7 +610,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         ((cr.lon - other.lon) * (cr.lon - other.lon));
       distance_norm = (float) distance / (350 * 350);
       // Add dist(c, i) * alpha_c * S_n
-      g0[i * num_servers + j] = distance_norm * props[i].second * S_n;
+      temp = distance_norm * props[i].second * S_n;
       
       totals_it = totals.find(this->storage.records[j].content.cstr());
 
@@ -613,25 +618,11 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       if (total_traffic == 0) P_other = 0.0;
 
       // Add S_n * 2 * alpha_c * (P_other - w) * lambda
-      g0[i * num_servers + j] += S_n * 2 * (P_other - .25) * 1.0;
+      temp+= S_n * 2 * (P_other - .25) * 1.0;
 
-      eq_vec[i * num_servers + j] = 1.0;
+      MSK_putcj(task, i * num_servers + j, temp);
     }
-    CE.setColumn(i, eq_vec);
   }
-
-  cout << G;
-  cout << g0;
-  cout << CE;
-  cout << CI;
-  cout << ce0;
-  cout << ci0;
-
-  cout << "Solution cost\n";
-  cout << solve_quadprog(G, g0, CE, ce0, CI, ci0, x) << "\n";
-  cout << "Solution\n";
-  cout << x;
-
   // Now populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
