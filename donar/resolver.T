@@ -507,7 +507,6 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
     out.insert(pair <string, unsigned int> (
       string(sd_opt.records[i].content.cstr()), other_instance_total));
   }
-
   TRIGGER(cb, out, subdomain_total);
 }
 
@@ -515,35 +514,34 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
 // calculate optimal routes.
 tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   tvars {
-  vector<pair<ClientRegion, float> > props;
-  vector<pair<ClientRegion, float> >::iterator it;
-  int num_clients;
-  int num_servers;
-  ClientRegion other;
-  ClientRegion cr;
-  vector<float> coeffs;
-  int i, j;
-  int distance;
-  float distance_norm;
-  vector<int> indices;
-  int problem_size;
-  vector<double> temp_row;
-  double* solution;
-  unordered_map<ClientRegion, vector<pair<record, float> >, 
-      ClientRegionHash, ClientRegionEqual > new_rules;
-  vector<pair<record, float> > client_rules;
-  Vector<double> g0, ce0, ci0, x, temp_vec;
-  Matrix<double> G, CE, CI;
-  double temp;
-  unordered_map <string, unsigned int> totals;
-  unordered_map <string, unsigned int>::iterator totals_it;
-  unsigned int total_traffic;
+    vector<pair<ClientRegion, float> > props;
+    vector<pair<ClientRegion, float> >::iterator it;
+    int num_clients;
+    int num_servers;
+    ClientRegion other;
+    ClientRegion cr;
+    vector<float> coeffs;
+    int i, j, k, l;
+    int distance;
+    float distance_norm;
+    int problem_size;
+    vector<double> temp_row;
+    double* solution;
+    unordered_map<ClientRegion, vector<pair<record, float> >, 
+	ClientRegionHash, ClientRegionEqual > new_rules;
+    vector<pair<record, float> > client_rules;
+    Vector<double> g0, ce0, ci0, x, eq_vec;
+    Matrix<double> G, CE, CI;
+    double temp, S_n, P_other;
+    unordered_map <string, unsigned int> totals;
+    unordered_map <string, unsigned int>::iterator totals_it;
+    unsigned int total_traffic;
+    Vector<double> quad_row;
   }
 
   // Get global data
   twait { get_traffic_totals(mkevent(totals, total_traffic)); }  
- 
-   
+  
   // Get client proportions
   props = this->get_client_props(10);
   it = props.begin();
@@ -561,29 +559,44 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   g0.resize(problem_size);
   x.resize(problem_size);
   ce0.resize(num_clients);
-  ci0.resize(0);  
+  ci0.resize(problem_size);  
   CE.resize(problem_size, num_clients);
-  CI.resize(problem_size, 0);
+  CI.resize(problem_size, problem_size);
 
-  temp = 1.0;
-  for (i = 1; i <= problem_size; i++) {
-    for (j = 1; j <= problem_size; j++) {
-      G.set(&temp, i, j);    
+  S_n = 1.0;
+
+  for (i=0; i < num_servers; i++) {
+    for (j=0; j < num_clients; j++) {
+      quad_row = Vector<double> (problem_size);
+      for (l=0; l < problem_size; l++) quad_row[l] = 0.00;
+      for (k=0; k < num_clients; k++) {
+        temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
+        cout << "Setting to: " << temp << "\n";
+        quad_row[k * num_servers + i] = .001;
+        // row: j * num_servers + i // col: k * num_servers + i
+      }
+      G.setRow(j * num_servers + i, quad_row);
     }
   }
-  cout << "SIZE";
-  cout << G.nrows();
-  cout << G.ncols();
 
-  indices = vector<int> (problem_size);
-  for (i = 0; i < (problem_size + 1); i++) {
-    indices[i] = i;
+  eq_vec.resize(problem_size);
+
+  // Add constraints that all must be positive
+  for (i = 0; i < problem_size; i++) {
+    quad_row = Vector<double> (problem_size);
+    for (l=0; l < problem_size; l++) quad_row[l] = 0.0;
+    quad_row[i] = 1.0;
+    CI.setRow(i, quad_row);
+    ci0[i] = 0.0;
   }
 
-  temp_vec.resize(problem_size);
-  // Coefficient of an Rci should be alpha_c * dist_ci
+  // Add linear coefficients and constraints
   for (i = 0; i < num_clients; i++) {
     ce0[i] = -1.0;
+
+    eq_vec = Vector<double> (problem_size);
+    for (k=0; k<problem_size; k++) eq_vec[k] = 0.0;
+
     for (j = 0; j < num_servers; j++) {
       twait{get_client_region(
         this->storage.records[j].content.cstr(), mkevent(other));}
@@ -591,21 +604,40 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       distance = ((cr.lat - other.lat) * (cr.lat - other.lat)) +
         ((cr.lon - other.lon) * (cr.lon - other.lon));
       distance_norm = (float) distance / (350 * 350);
-      g0[i * num_servers + j] = distance_norm * props[i].second; 
-      temp_vec[i * num_servers + j] = 1.0;
+      // Add dist(c, i) * alpha_c * S_n
+      g0[i * num_servers + j] = distance_norm * props[i].second * S_n;
+      
+      totals_it = totals.find(this->storage.records[j].content.cstr());
+
+      P_other = (float) totals_it->second / total_traffic;
+      if (total_traffic == 0) P_other = 0.0;
+
+      // Add S_n * 2 * alpha_c * (P_other - w) * lambda
+      g0[i * num_servers + j] += S_n * 2 * (P_other - .25) * 1.0;
+
+      eq_vec[i * num_servers + j] = 1.0;
     }
-    CE.setColumn(i, temp_vec);
-    temp_vec = Vector<double> ();
+    CE.setColumn(i, eq_vec);
   }
 
-//  solve_quadprog(G, g0, CE, ce0, CI, ci0, x);
+  cout << G;
+  cout << g0;
+  cout << CE;
+  cout << CI;
+  cout << ce0;
+  cout << ci0;
+
+  cout << "Solution cost\n";
+  cout << solve_quadprog(G, g0, CE, ce0, CI, ci0, x) << "\n";
+  cout << "Solution\n";
+  cout << x;
 
   // Now populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
-        (this->storage.records[j], 1.0));//x[i * num_servers + j]));
+        (this->storage.records[j], x[i * num_servers + j]));
     }
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
@@ -632,8 +664,8 @@ tamed void client_debug(callback<void>::ref cb) {
       cout <<  sd->storage.fqdn.cstr();
       cout << "\n";
       // Calculate optimal routes based on external traffic
-      //twait{ sd->calculate_optimal_routes(mkevent()); }
-      twait {sd->update_expected_traffic(10, mkevent());}
+      twait{ sd->calculate_optimal_routes(mkevent()); }
+      //twait {sd->update_expected_traffic(10, mkevent());}
       subdomain_cache_it++;
     }
     twait { delaycb(10, 0, mkevent()); }
