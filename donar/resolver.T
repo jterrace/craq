@@ -572,7 +572,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       for (k=0; k < num_clients; k++) {
         temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
         cout << "Setting to: " << temp << "\n";
-        quad_row[k * num_servers + i] = .001;
+        quad_row[k * num_servers + i] = temp;
         // row: j * num_servers + i // col: k * num_servers + i
       }
       G.setRow(j * num_servers + i, quad_row);
