@@ -31,14 +31,14 @@
 #include "cppconn/exception.h"
 #include "cppconn/warning.h"
 #include "QuadProg++.hh"
+/*
+#include <glpk.h>
 #include "coin/ClpSimplex.hpp"
-#include "coin/ClpCholeskyBase.hpp"
-#include "coin/ClpSimplexNonlinear.hpp"
 #include "coin/CoinHelperFunctions.hpp"
 #include "coin/CoinTime.hpp"
 #include "coin/CoinBuild.hpp"
 #include "coin/CoinModel.hpp"
-
+*/
 #include <tr1/unordered_map>
 #include <tr1/unordered_set>
 
@@ -79,7 +79,7 @@ ClientRegion::ClientRegion(int lat, int lon) {
   this->lat = lat;
   this->lon = lon;
 }
- 
+
 ClientRegion::ClientRegion() {
 }
 
@@ -526,18 +526,17 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     float distance_norm;
     int problem_size;
     vector<double> temp_row;
-    vector<int> indices;
     double* solution;
-    ClpSimplex model;
-    CoinPackedMatrix coin_mat;
-    CoinBuild build_object;
     unordered_map<ClientRegion, vector<pair<record, float> >, 
 	ClientRegionHash, ClientRegionEqual > new_rules;
     vector<pair<record, float> > client_rules;
-    double temp, S_n, P_other, coeff;
+    Vector<double> g0, ce0, ci0, x, eq_vec;
+    Matrix<double> G, CE, CI;
+    double temp, S_n, P_other;
     unordered_map <string, unsigned int> totals;
     unordered_map <string, unsigned int>::iterator totals_it;
     unsigned int total_traffic;
+    Vector<double> quad_row;
   }
 
   // Get global data
@@ -554,46 +553,50 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   cout << "Number of clients: " << num_clients;
   cout << " Number of servers: " << num_servers;
-  
+
+  // Create coefficient vector of Rci's (R11, R12, R13...)
+  G.resize(problem_size, problem_size);
+  g0.resize(problem_size);
+  x.resize(problem_size);
+  ce0.resize(num_clients);
+  ci0.resize(problem_size);  
+  CE.resize(problem_size, num_clients);
+  CI.resize(problem_size, problem_size);
+
   S_n = 1.0;
 
-  model.resize(0, problem_size);
-  model.setOptimizationDirection(1);
-  indices = vector<int> (problem_size);
-  for (i = 0; i < (problem_size); i++) {
-    indices[i] = i;
-  }
-
-  // QUADRATIC COEFFS
-  coin_mat.setDimensions(problem_size, problem_size);
-  for (i=0; i < problem_size; i++) {
-    for (j=0; j < problem_size; j++)
-      coin_mat.modifyCoefficient(i, j, 0.0, true);
-  }
   for (i=0; i < num_servers; i++) {
     for (j=0; j < num_clients; j++) {
+      quad_row = Vector<double> (problem_size);
+      for (l=0; l < problem_size; l++) quad_row[l] = 0.00;
       for (k=0; k < num_clients; k++) {
         temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
         cout << "Setting to: " << temp << "\n";
-        coin_mat.modifyCoefficient(j * num_servers + i, 
-          k * num_servers + i, temp, true);
+        quad_row[k * num_servers + i] = .001;
         // row: j * num_servers + i // col: k * num_servers + i
       }
+      G.setRow(j * num_servers + i, quad_row);
     }
   }
-  coin_mat.dumpMatrix(NULL);
-  cout << "SIZE" << model.numberRows() << model.numberColumns();
-  model.loadQuadraticObjective (coin_mat); 
-//  ClpCholeskyBase * cholesky = new ClpCholeskyBase();
-//  cholesky->setKKT(true);
-//  model.setCholesky(cholesky);
-  cout << "SIZE" << model.numberRows() << model.numberColumns();
-  fflush(stdout);
-  model.barrier(true);
-/*
+
+  eq_vec.resize(problem_size);
+
+  // Add constraints that all must be positive
+  for (i = 0; i < problem_size; i++) {
+    quad_row = Vector<double> (problem_size);
+    for (l=0; l < problem_size; l++) quad_row[l] = 0.0;
+    quad_row[i] = 1.0;
+    CI.setRow(i, quad_row);
+    ci0[i] = 0.0;
+  }
+
   // Add linear coefficients and constraints
   for (i = 0; i < num_clients; i++) {
-    temp_row = vector<double> (problem_size, 0);
+    ce0[i] = -1.0;
+
+    eq_vec = Vector<double> (problem_size);
+    for (k=0; k<problem_size; k++) eq_vec[k] = 0.0;
+
     for (j = 0; j < num_servers; j++) {
       twait{get_client_region(
         this->storage.records[j].content.cstr(), mkevent(other));}
@@ -602,7 +605,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         ((cr.lon - other.lon) * (cr.lon - other.lon));
       distance_norm = (float) distance / (350 * 350);
       // Add dist(c, i) * alpha_c * S_n
-      coeff = distance_norm * props[i].second * S_n;
+      g0[i * num_servers + j] = distance_norm * props[i].second * S_n;
       
       totals_it = totals.find(this->storage.records[j].content.cstr());
 
@@ -610,24 +613,31 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       if (total_traffic == 0) P_other = 0.0;
 
       // Add S_n * 2 * alpha_c * (P_other - w) * lambda
-      coeff += S_n * 2 * (P_other - .25) * 1.0;
+      g0[i * num_servers + j] += S_n * 2 * (P_other - .25) * 1.0;
 
-      model.setObjectiveCoefficient(i * num_servers + j, coeff);
-      temp_row[i * num_servers + j] = 1.0;
+      eq_vec[i * num_servers + j] = 1.0;
     }
-    build_object.addRow(problem_size, const_cast<const int*> (&indices[0]),
-      const_cast<const double*> (&temp_row[0]), 1.0, 1.0);
+    CE.setColumn(i, eq_vec);
   }
-  model.addRows(build_object, true);
-  model.dual();
-  solution = model.primalColumnSolution();
-  
+
+  cout << G;
+  cout << g0;
+  cout << CE;
+  cout << CI;
+  cout << ce0;
+  cout << ci0;
+
+  cout << "Solution cost\n";
+  cout << solve_quadprog(G, g0, CE, ce0, CI, ci0, x) << "\n";
+  cout << "Solution\n";
+  cout << x;
+
   // Now populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
-        (this->storage.records[j], solution[i * num_servers + j]));
+        (this->storage.records[j], x[i * num_servers + j]));
     }
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
@@ -636,7 +646,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   // Now store expected traffic given this new policy
   twait {this->update_expected_traffic(10, mkevent());}
-*/
+
   TRIGGER(cb);
 }
 void client_debug(callback<void>::ref cb, CLOSURE);
