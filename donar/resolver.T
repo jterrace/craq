@@ -47,7 +47,6 @@ str zoo_list;
 
 using namespace std;
 using namespace sql;
-using namespace QuadProgPP;
 
 const unsigned int MAX_BUFF = 1000;
 Connection* quova_conn;
@@ -273,8 +272,7 @@ void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
     it = sd->num_requests.find(*c);
   }
   unordered_map<size_t, unsigned int>* existing_map = it->second;
-
-  size_t t = time(NULL);
+size_t t = time(NULL);
 
   t = t - (t % 60); // Request granularity is per-minute
 
@@ -290,6 +288,43 @@ void log_client_request(ClientRegion* c, SubdomainInfo* sd) {
     existing_map->erase(t);
     existing_map->insert(pair<size_t, unsigned int>(t, value + 1));
   }
+}
+
+
+// Gets optimization data from CRAQ for this subdomain. If no optimization
+// record exists in CRAQ, creates one. 
+tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
+  tvars {
+    string opt_key;
+    str subdomain_data;
+    subdomain_opt sd_opt;
+    rec_opt_info new_rec_opt;
+    int i;
+  }
+
+  opt_key = this->storage.fqdn.cstr();
+  opt_key += "-opt";
+  twait {craq.get_key(opt_key, mkevent(subdomain_data));}
+
+  if (subdomain_data.len() < 20) {
+      cout << "CRAQ does not have optimization info for \n" << 
+        this->storage.fqdn.cstr();
+      // Add new entries for existing records
+      // Todo, check against preferences communicated via DUP
+      sd_opt.fqdn = this->storage.fqdn;
+      for (i=0; i < this->storage.records.size(); i++) {
+        new_rec_opt.content = this->storage.records[i].content;
+        new_rec_opt.proportion = 1.0 / this->storage.records.size();
+        new_rec_opt.epsilon = .1;
+        new_rec_opt.lambda = 1.0;
+        sd_opt.records.push_back(new_rec_opt);
+      }
+  }
+  else {
+    str2xdr (sd_opt, subdomain_data);
+  }
+  
+  TRIGGER(cb, sd_opt);
 }
 
 // Take traffic over the last <minutes> minutes, and calculate the
@@ -312,7 +347,6 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
     bool seen;
     string opt_key, result;
     struct traffic_entry new_entry;
-    struct rec_opt_info new_rec_opt;
     vector<record> recs;
   }
   client_it = this->num_requests.begin();
@@ -379,25 +413,8 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
     client_it++;
   }
 
-  opt_key = this->storage.fqdn.cstr();
-  opt_key += "-opt";
-  twait {craq.get_key(opt_key, mkevent(subdomain_data));}
-
-  if (subdomain_data.len() < 20) {
-      cout << "CRAQ does not have optimization info for \n" << 
-        this->storage.fqdn.cstr();
-      // Add blank entries for existing records
-      sd_opt.fqdn = this->storage.fqdn;
-      for (i=0; i < this->storage.records.size(); i++) {
-        new_rec_opt.content = this->storage.records[i].content;
-        // TODO fill in proportion
-        sd_opt.records.push_back(new_rec_opt);
-      }
-  }
-  else {
-    str2xdr (sd_opt, subdomain_data);
-  }
-
+  twait{this->get_opt_data(mkevent(sd_opt)); }
+  
   to_add_it = to_add.begin();
 
   // Look at each record in the optimization entry
@@ -502,6 +519,12 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
   TRIGGER(cb, out, subdomain_total);
 }
 
+static void MSKAPI printstr(void *handle, char str[]) {
+  exit(1);
+  printf("%s", str);
+  fflush(stdout);
+}
+
 // Use traffic from other nodes, alongside local client information, to
 // calculate optimal routes.
 tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
@@ -522,16 +545,16 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     unordered_map<ClientRegion, vector<pair<record, float> >, 
 	ClientRegionHash, ClientRegionEqual > new_rules;
     vector<pair<record, float> > client_rules;
-    MSKevn_t env;
+    MSKenv_t env;
+    MSKsolstae solsta;
     MSKrescodee r;
     MSKtask_t task;
+    MSKrescodee trmcode;
     double temp, S_n, P_other;
-    int* quad_i, quad_j;
-    double* quad_val;
+    double *result;
     unordered_map <string, unsigned int> totals;
     unordered_map <string, unsigned int>::iterator totals_it;
     unsigned int total_traffic;
-    Vector<double> quad_row;
   }
 
   // Get global data
@@ -552,37 +575,30 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   r = MSK_makeenv(&env, NULL, NULL, NULL, NULL);
   r = MSK_initenv(env);
   r = MSK_maketask(env, num_clients, problem_size, &task);
+  MSK_linkfiletotaskstream(task,MSK_STREAM_LOG,"debug.txt",0);
   r = MSK_append(task, MSK_ACC_CON, num_clients);
   r = MSK_append(task, MSK_ACC_VAR, problem_size);
+  r = MSK_putmaxnumvar(task, problem_size);
+  r = MSK_putmaxnumcon(task, num_clients);
+  r = MSK_putmaxnumanz(task, problem_size);
 
   S_n = 1.0;
   
-  quad_i = new int[num_servers * num_clients * num_clients];
-  quad_j = new int[num_servers * num_clients * num_clients];
-  quad_val = new int[num_servers * num_clients * num_clients];
-
-  l = 0;
   for (i=0; i < num_servers; i++) {
     for (j=0; j < num_clients; j++) {
-      quad_row = Vector<double> (problem_size);
       for (k=0; k < num_clients; k++) {
         temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
+        cout << "Setting index: " << j * num_servers + i << ", " <<
+          k * num_servers + i;
         cout << "Setting to: " << temp << "\n";
-        quad_i[l] = j * num_servers + i;
-        quad_j[l] = k * num_servers + i;
-        quad_val[l] = temp;
-        l++;
+        if (j >= k) {
+          r = MSK_putqobjij(task, j * num_servers + i, 
+                                  k * num_servers + i, temp);
+          if (r != MSK_RES_OK) { fatal << "Call returned bad" << r; }
+        }
         // row: j * num_servers + i // col: k * num_servers + i
       }
     }
-  }
-
-  r = MSK_putqobj(task, num_servers * num_clients * num_clients, 
-    quad_i, quad_j, quad_val);
-
-  // Add constraints that all x[] must be positive
-  for (i = 0; i < problem_size; i++) {
-    MSK_putbound(task, MSK_ACC_VAR, i, MSK_BK_LO, 0.0, 0.0);
   }
 
   // Add "sum to 1" constraints
@@ -591,17 +607,20 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       temp_index = i;
       temp = 1.0;
       r = MSK_putavec(task, MSK_ACC_VAR, i * num_servers + j, 1, &temp_index,
-        &temp,
-      )
+        &temp );
     }
     r = MSK_putbound(task, MSK_ACC_CON, i, MSK_BK_FX, 1.0, 1.0);
   }
 
+
+  // Add constraints that all x[] must be positive (may be default)
+  for (i = 0; i < problem_size; i++) {
+    MSK_putbound(task, MSK_ACC_VAR, i, MSK_BK_RA, 0.0, +MSK_INFINITY);
+  }
+
   // Add linear coefficients
   for (i = 0; i < num_clients; i++) {
-    eq_vec = Vector<double> (problem_size);
-    for (k=0; k<problem_size; k++) eq_vec[k] = 0.0;
-
+ 
     for (j = 0; j < num_servers; j++) {
       twait{get_client_region(
         this->storage.records[j].content.cstr(), mkevent(other));}
@@ -623,12 +642,42 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       MSK_putcj(task, i * num_servers + j, temp);
     }
   }
+
+  r = MSK_putobjsense(task, MSK_OBJECTIVE_SENSE_MINIMIZE);
+
+  cout << "Pre-Optimization Status: ";
+  if (trmcode == MSK_RES_OK) cout << "OK\n";
+  else { cout << trmcode; }
+  MSK_writedata(task, "dump.txt");
+  r = MSK_optimizetrm(task, &trmcode);
+
+  cout << "After optimization";
+  if (trmcode == MSK_RES_OK) cout << "OK\n";
+  else { cout << trmcode; }
+
+  MSK_solutionsummary (task, MSK_STREAM_ERR);
+  MSK_getsolutionstatus (task, MSK_SOL_ITR, NULL, &solsta);
+  if (solsta == MSK_SOL_STA_OPTIMAL || solsta == MSK_SOL_STA_NEAR_OPTIMAL) {
+    cout << "At optimal point\n";
+  }
+  else {
+    cout << "NOT Optimal ";
+    printf("%i\n", solsta);
+  }
+
+  result = new double[problem_size];
+  MSK_getsolutionslice(task, MSK_SOL_ITR, MSK_SOL_ITEM_XX, 0, problem_size,
+    result);
+  for  (i = 0; i < problem_size; i++) {
+    cout << result[i];
+    cout << endl;
+  }
   // Now populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
-        (this->storage.records[j], x[i * num_servers + j]));
+        (this->storage.records[j], result[i * num_servers + j]));
     }
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
@@ -637,7 +686,6 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   // Now store expected traffic given this new policy
   twait {this->update_expected_traffic(10, mkevent());}
-
   TRIGGER(cb);
 }
 void client_debug(callback<void>::ref cb, CLOSURE);
