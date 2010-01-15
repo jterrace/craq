@@ -54,13 +54,19 @@ class SubdomainInfo {
     vector<pair<ClientRegion, float> > get_client_props(int minutes);
 
     // Populate my routing rules
-    void calculate_optimal_routes(CLOSURE);
+    void calculate_optimal_routes(callback<void>::ref cb, CLOSURE);
 
     // For each record, for each client region, store the probability
     // of routing to that client region.
-    vector<pair<record, unordered_map<ClientRegion, float, 
-      ClientRegionHash, ClientRegionEqual> > > rules;
+    unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash,
+      ClientRegionEqual > rules;
 
+    void get_opt_data(callback<void, subdomain_opt>::ref cb, CLOSURE);
+
+    void update_expected_traffic(int, callback<void>::ref cb, CLOSURE);
+
+    void get_traffic_totals(
+      callback<void, unordered_map<std::string, unsigned int >, unsigned int >::ref cb, CLOSURE);
 };
 
 typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*, 
@@ -68,11 +74,12 @@ typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*,
 
 typedef unordered_map<size_t, unsigned int>::iterator num_request_iter;
 
-typedef vector<pair<record, unordered_map<ClientRegion, float, 
-  ClientRegionHash, ClientRegionEqual> > >::iterator rules_iter;
+typedef callback<void, unordered_map<std::string, unsigned int>, unsigned int>::ref cb_totals;
 
-typedef unordered_map<ClientRegion, float, ClientRegionHash,
-  ClientRegionEqual>::iterator client_rule_iter;
+typedef unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash, ClientRegionEqual >::iterator rules_iter;
+
+
+typedef vector<pair<record, float> >::iterator client_rule_iter;
 
 class SubdomainEqual {
   public:
