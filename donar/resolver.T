@@ -35,6 +35,7 @@
 #include <tr1/unordered_set>
 
 str sock_path;
+str mosek_file;
 str mysql_user;
 str mysql_pass;
 str mysql_host;
@@ -300,13 +301,18 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
     subdomain_opt sd_opt;
     rec_opt_info new_rec_opt;
     int i;
+    double proportion, lambda, epsilon;
   }
 
   opt_key = this->storage.fqdn.cstr();
   opt_key += "-opt";
   twait {craq.get_key(opt_key, mkevent(subdomain_data));}
 
-  if (subdomain_data.len() < 20) {
+  if (subdomain_data.len() > 20) {
+    str2xdr (sd_opt, subdomain_data);
+  }
+  if (subdomain_data.len() < 20 || 
+       (sd_opt.records.size() < this->storage.records.size())) {
       cout << "CRAQ does not have optimization info for \n" << 
         this->storage.fqdn.cstr();
       // Add new entries for existing records
@@ -314,16 +320,18 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
       sd_opt.fqdn = this->storage.fqdn;
       for (i=0; i < this->storage.records.size(); i++) {
         new_rec_opt.content = this->storage.records[i].content;
-        new_rec_opt.proportion = 1.0 / this->storage.records.size();
-        new_rec_opt.epsilon = .1;
-        new_rec_opt.lambda = 1.0;
+        proportion = 1.0 / this->storage.records.size();
+        epsilon = .1;
+        lambda = 1.0;
+        memcpy(&new_rec_opt.proportion, &proportion, 
+          sizeof(new_rec_opt.proportion));
+        memcpy(&new_rec_opt.epsilon, &epsilon, sizeof(new_rec_opt.epsilon));
+        memcpy(&new_rec_opt.lambda, &lambda, sizeof(new_rec_opt.lambda));
+
         sd_opt.records.push_back(new_rec_opt);
       }
   }
-  else {
-    str2xdr (sd_opt, subdomain_data);
-  }
-  
+
   TRIGGER(cb, sd_opt);
 }
 
@@ -445,6 +453,8 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
   }
 
   subdomain_data = xdr2str(sd_opt);
+  opt_key = this->storage.fqdn.cstr();
+  opt_key += "-opt";
   cout << "Setting update traffic volume for " << opt_key;
   twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
     mkevent(result));}
@@ -479,24 +489,11 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
     unsigned int subdomain_total;
   }
 
-  opt_key = this->storage.fqdn.cstr();
-  opt_key += "-opt";
-  twait {craq.get_key(opt_key, mkevent(subdomain_data));}
-
-  if (subdomain_data.len() < 30) {
-    if (DEBUG) {
-      cout << "Request to get total traffic failed since data not in CRAQ: ";
-      cout << this->storage.fqdn.cstr() << "\n";
-    }
-    for (i=0; i < this->storage.records.size(); i++) {
-      out.insert(pair <string, unsigned int> (
-        string(this->storage.records[i].content), 0));
-    }
-  }
+  twait { get_opt_data(mkevent(sd_opt)); }  
 
   if (DEBUG) cout << "Got traffic totals for " << this->storage.fqdn.cstr() <<
    "\n";
-  str2xdr (sd_opt, subdomain_data);
+
   for (i=0; i < sd_opt.records.size(); i++) {
     other_instance_total = 0;
     instance_total = 0;
@@ -536,6 +533,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     ClientRegion other;
     ClientRegion cr;
     vector<float> coeffs;
+    subdomain_opt sd_opt;
     int i, j, k, l;
     int distance;
     float distance_norm;
@@ -550,7 +548,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     MSKrescodee r;
     MSKtask_t task;
     MSKrescodee trmcode;
-    double temp, S_n, P_other;
+    double temp, S_n, P_other, lambda, proportion;
     double *result;
     unordered_map <string, unsigned int> totals;
     unordered_map <string, unsigned int>::iterator totals_it;
@@ -558,9 +556,12 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   }
 
   // Get global data
-  twait { get_traffic_totals(mkevent(totals, total_traffic)); }  
-  
-  // Get client proportions
+  twait { this->get_traffic_totals(mkevent(totals, total_traffic)); }  
+
+  // Get optimization parameters
+  twait{ this->get_opt_data(mkevent(sd_opt)); }
+
+  // Get client request data
   props = this->get_client_props(10);
   it = props.begin();
   
@@ -568,6 +569,11 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   num_clients = props.size();
   num_servers = this->storage.records.size();
   problem_size = num_clients * num_servers;
+
+  // Make sure we have enough records in opt
+  cout << sd_opt.records.size();
+  cout << this->storage.records.size();
+  assert(sd_opt.records.size() == this->storage.records.size());
 
   cout << "Number of clients: " << num_clients;
   cout << " Number of servers: " << num_servers;
@@ -587,10 +593,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   for (i=0; i < num_servers; i++) {
     for (j=0; j < num_clients; j++) {
       for (k=0; k < num_clients; k++) {
-        temp = props[j].second * props[k].second * 2.0; // temp 1.0 cost
-        cout << "Setting index: " << j * num_servers + i << ", " <<
-          k * num_servers + i;
-        cout << "Setting to: " << temp << "\n";
+        memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));
+        temp = props[j].second * props[k].second * lambda;
         if (j >= k) {
           r = MSK_putqobjij(task, j * num_servers + i, 
                                   k * num_servers + i, temp);
@@ -632,13 +636,20 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       temp = distance_norm * props[i].second * S_n;
       
       totals_it = totals.find(this->storage.records[j].content.cstr());
+      if (totals_it == totals.end()) {
+        cout << "No record data for " << 
+         this->storage.records[j].content.cstr();
+        exit(1);
+      }
 
       P_other = (float) totals_it->second / total_traffic;
       if (total_traffic == 0) P_other = 0.0;
 
       // Add S_n * 2 * alpha_c * (P_other - w) * lambda
-      temp+= S_n * 2 * (P_other - .25) * 1.0;
+      memcpy(&proportion, &sd_opt.records[j].proportion, sizeof(double));
+      memcpy(&lambda, &sd_opt.records[j].lambda, sizeof(double));
 
+      temp+= S_n * 2 * (P_other - proportion) * lambda;
       MSK_putcj(task, i * num_servers + j, temp);
     }
   }
@@ -982,17 +993,6 @@ tamed static void process(int fd) {
   return;
 }
 
-/*
-// Return a set of request-routing rules given:
-// clients: An list of clients with correspoding proportions
-// records: A list of records
-  vector<pair<record, unordered_map<ClientRegion, float,
-  ClientRegionHash, ClientRegionEqual> > > get_rules(
-  vector<pair<ClientRegion, float> > clients, vector<record> records) {
-
-}
-*/
-
 tamed static void listen_loop() {
   tvars {
     int s, fd, len;
@@ -1061,6 +1061,7 @@ tamed static void main2(int argc, char** argv) {
     bool errors;
     parseargs pa("donar.conf", -1);
     struct in_addr addr;
+    strbuf mosek_buf;
   }
   /*
   while ((ch = getopt(argc, argv, "C")) != -1) {
@@ -1077,6 +1078,7 @@ tamed static void main2(int argc, char** argv) {
   ct.add("MySqlHost", &mysql_host);
   ct.add("ZooList", &zoo_list);
   ct.add("SockPath", &sock_path);
+  ct.add("MosekKeyFile", &mosek_file);
 
   line = 0;
   while (pa.getline(&av, &line)) {
@@ -1087,6 +1089,13 @@ tamed static void main2(int argc, char** argv) {
   // Open log file
   logfile.open("/var/log/donar", ios::out | ios::app);
   logfile << "Test";
+
+/* NOT WORKING RIGHT NOW
+  // Set mosek env variable
+  mosek_buf << "MOSEKLM_LICENSE_FILE=";
+  mosek_buf << mosek_file;
+  putenv((char*) str(mosek_buf).cstr());
+*/
 
   // Setup mysql connections
   driver = get_driver_instance();
