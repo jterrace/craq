@@ -475,8 +475,9 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
 }
 
 // Probe the CRAQ backend to get the wide-area totals of traffic being routed
-// to an instance.
-tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
+// to an instance. If include_me is true, the instance map includes traffic
+// from this node.
+tamed void SubdomainInfo::get_traffic_totals(bool include_me, cb_totals cb) {
   tvars {
     unordered_map <string, unsigned int> out;
     string opt_key;
@@ -500,7 +501,8 @@ tamed void SubdomainInfo::get_traffic_totals(cb_totals cb) {
     // Sum contribution from all nodes
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
       instance_total += sd_opt.records[i].entries[j].traffic_vol;
-      if (sd_opt.records[i].entries[j].server_id != my_ip_addr) {
+      if (!include_me && 
+        (sd_opt.records[i].entries[j].server_id != my_ip_addr)) {
         other_instance_total += sd_opt.records[i].entries[j].traffic_vol;
       }
     }
@@ -548,7 +550,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     MSKrescodee r;
     MSKtask_t task;
     MSKrescodee trmcode;
-    double temp, S_n, P_other, lambda, proportion;
+    double temp, S_n, P_other, P_i, lambda, proportion, epsilon, diff;
     double *result;
     unordered_map <string, unsigned int> totals;
     unordered_map <string, unsigned int>::iterator totals_it;
@@ -556,7 +558,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   }
 
   // Get global data
-  twait { this->get_traffic_totals(mkevent(totals, total_traffic)); }  
+  twait { this->get_traffic_totals(false, mkevent(totals, total_traffic)); }  
 
   // Get optimization parameters
   twait{ this->get_opt_data(mkevent(sd_opt)); }
@@ -683,7 +685,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     cout << result[i];
     cout << endl;
   }
-  // Now populate routing rules based on the new data
+  // Populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
@@ -695,10 +697,39 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   }
   this->rules = new_rules;
 
-  // Now store expected traffic given this new policy
+  // Store expected traffic given this new policy
   twait {this->update_expected_traffic(10, mkevent());}
+
+  // Update optimization paramters (we could do this more efficiently)
+  twait { this->get_traffic_totals(true, mkevent(totals, total_traffic)); }
+  for (int i = 0; i < num_servers; i++) {
+    totals_it = totals.find(this->storage.records[i].content.cstr());
+    P_i = (double) totals_it->second / total_traffic;
+    memcpy(&proportion, &sd_opt.records[i].proportion, sizeof(double));
+    memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));    
+    diff = (P_i - proportion) * (P_i - proportion) - (epsilon * epsilon);
+    if (diff < 0) continue;
+    if (DEBUG) {
+      cout << "True proportion was " << P_i << " while requested was " <<
+        proportion;
+      cout << "diff^2 " << diff << " exceeded epsilon^2 " << 
+        epsilon << "\n";
+    }
+    memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));      
+    if (DEBUG) {
+      cout << "Updating lambda_i for instance " << 
+        this->storage.records[i].content.cstr() << " old value " <<
+        lambda << "\n";
+    } 
+    lambda = lambda + (1.0 / (epsilon * epsilon)) * diff;
+    if (DEBUG) cout << "New value " << lambda << "\n";
+    memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));
+  }
+
+
   TRIGGER(cb);
 }
+
 void client_debug(callback<void>::ref cb, CLOSURE);
 
 tamed void client_debug(callback<void>::ref cb) {
