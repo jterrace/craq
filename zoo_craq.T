@@ -174,7 +174,7 @@ tamed void
 czoo_init(const char * host, ptr<callback<void, bool> > cb, ZooLogLevel log_level) {
 	init_cb = cb;
 	zoo_set_debug_level(log_level);
-	zh = zookeeper_init(host, &czoo_watcher, 5000, 0, 0, 0);
+	zh = zookeeper_init(host, &czoo_watcher, 60000, 0, 0, 0);
 	if(!zh) {
 		TRIGGER( cb, false );
                 return;

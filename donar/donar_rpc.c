@@ -6,6 +6,146 @@
 #ifdef MAINTAINER
 
 const strbuf &
+rpc_print (const strbuf &sb, const traffic_entry &obj, int recdepth,
+           const char *name, const char *prefix)
+{
+  if (name) {
+    if (prefix)
+      sb << prefix;
+    sb << "traffic_entry " << name << " = ";
+  };
+  const char *sep;
+  str npref;
+  if (prefix) {
+    npref = strbuf ("%s  ", prefix);
+    sep = "";
+    sb << "{\n";
+  }
+  else {
+    sep = ", ";
+    sb << "{ ";
+  }
+  rpc_print (sb, obj.server_id, recdepth, "server_id", npref);
+  sb << sep;
+  rpc_print (sb, obj.update_time, recdepth, "update_time", npref);
+  sb << sep;
+  rpc_print (sb, obj.traffic_vol, recdepth, "traffic_vol", npref);
+  if (prefix)
+    sb << prefix << "};\n";
+  else
+    sb << " }";
+  return sb;
+}
+void
+print_traffic_entry (const void *_objp, const strbuf *_sbp, int _recdepth,
+                     const char *_name, const char *_prefix)
+{
+  rpc_print (_sbp ? *_sbp : warnx, *static_cast<const traffic_entry *> (_objp),
+             _recdepth, _name, _prefix);
+}
+void
+dump_traffic_entry (const traffic_entry *objp)
+{
+  rpc_print (warnx, *objp);
+}
+
+const strbuf &
+rpc_print (const strbuf &sb, const rec_opt_info &obj, int recdepth,
+           const char *name, const char *prefix)
+{
+  if (name) {
+    if (prefix)
+      sb << prefix;
+    sb << "rec_opt_info " << name << " = ";
+  };
+  const char *sep;
+  str npref;
+  if (prefix) {
+    npref = strbuf ("%s  ", prefix);
+    sep = "";
+    sb << "{\n";
+  }
+  else {
+    sep = ", ";
+    sb << "{ ";
+  }
+  rpc_print (sb, obj.content, recdepth, "content", npref);
+  sb << sep;
+  rpc_print (sb, obj.proportion, recdepth, "proportion", npref);
+  sb << sep;
+  rpc_print (sb, obj.epsilon, recdepth, "epsilon", npref);
+  sb << sep;
+  rpc_print (sb, obj.cap, recdepth, "cap", npref);
+  sb << sep;
+  rpc_print (sb, obj.lambda, recdepth, "lambda", npref);
+  sb << sep;
+  rpc_print (sb, obj.entries, recdepth, "entries", npref);
+  if (prefix)
+    sb << prefix << "};\n";
+  else
+    sb << " }";
+  return sb;
+}
+void
+print_rec_opt_info (const void *_objp, const strbuf *_sbp, int _recdepth,
+                    const char *_name, const char *_prefix)
+{
+  rpc_print (_sbp ? *_sbp : warnx, *static_cast<const rec_opt_info *> (_objp),
+             _recdepth, _name, _prefix);
+}
+void
+dump_rec_opt_info (const rec_opt_info *objp)
+{
+  rpc_print (warnx, *objp);
+}
+
+const strbuf &
+rpc_print (const strbuf &sb, const subdomain_opt &obj, int recdepth,
+           const char *name, const char *prefix)
+{
+  if (name) {
+    if (prefix)
+      sb << prefix;
+    sb << "subdomain_opt " << name << " = ";
+  };
+  const char *sep;
+  str npref;
+  if (prefix) {
+    npref = strbuf ("%s  ", prefix);
+    sep = "";
+    sb << "{\n";
+  }
+  else {
+    sep = ", ";
+    sb << "{ ";
+  }
+  rpc_print (sb, obj.fqdn, recdepth, "fqdn", npref);
+  sb << sep;
+  rpc_print (sb, obj.current_server_id, recdepth, "current_server_id", npref);
+  sb << sep;
+  rpc_print (sb, obj.in_progress, recdepth, "in_progress", npref);
+  sb << sep;
+  rpc_print (sb, obj.records, recdepth, "records", npref);
+  if (prefix)
+    sb << prefix << "};\n";
+  else
+    sb << " }";
+  return sb;
+}
+void
+print_subdomain_opt (const void *_objp, const strbuf *_sbp, int _recdepth,
+                     const char *_name, const char *_prefix)
+{
+  rpc_print (_sbp ? *_sbp : warnx, *static_cast<const subdomain_opt *> (_objp),
+             _recdepth, _name, _prefix);
+}
+void
+dump_subdomain_opt (const subdomain_opt *objp)
+{
+  rpc_print (warnx, *objp);
+}
+
+const strbuf &
 rpc_print (const strbuf &sb, const attr_type &obj, int recdepth,
            const char *name, const char *prefix)
 {
@@ -237,6 +377,66 @@ dump_account (const account *objp)
 }
 
 #endif /* MAINTAINER*/
+void *
+traffic_entry_alloc ()
+{
+  return New traffic_entry;
+}
+bool_t
+xdr_traffic_entry (XDR *xdrs, void *objp)
+{
+  switch (xdrs->x_op) {
+  case XDR_ENCODE:
+  case XDR_DECODE:
+    return rpc_traverse (xdrs, *static_cast<traffic_entry *> (objp));
+  case XDR_FREE:
+    rpc_destruct (static_cast<traffic_entry *> (objp));
+    return true;
+  default:
+    panic ("invalid xdr operation %d\n", xdrs->x_op);
+  }
+}
+
+void *
+rec_opt_info_alloc ()
+{
+  return New rec_opt_info;
+}
+bool_t
+xdr_rec_opt_info (XDR *xdrs, void *objp)
+{
+  switch (xdrs->x_op) {
+  case XDR_ENCODE:
+  case XDR_DECODE:
+    return rpc_traverse (xdrs, *static_cast<rec_opt_info *> (objp));
+  case XDR_FREE:
+    rpc_destruct (static_cast<rec_opt_info *> (objp));
+    return true;
+  default:
+    panic ("invalid xdr operation %d\n", xdrs->x_op);
+  }
+}
+
+void *
+subdomain_opt_alloc ()
+{
+  return New subdomain_opt;
+}
+bool_t
+xdr_subdomain_opt (XDR *xdrs, void *objp)
+{
+  switch (xdrs->x_op) {
+  case XDR_ENCODE:
+  case XDR_DECODE:
+    return rpc_traverse (xdrs, *static_cast<subdomain_opt *> (objp));
+  case XDR_FREE:
+    rpc_destruct (static_cast<subdomain_opt *> (objp));
+    return true;
+  default:
+    panic ("invalid xdr operation %d\n", xdrs->x_op);
+  }
+}
+
 void *
 attr_type_alloc ()
 {

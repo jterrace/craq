@@ -1,3 +1,27 @@
+// Stores aggregate traffic for each record from each instance
+struct traffic_entry {
+  unsigned int server_id;
+  unsigned int update_time;
+  unsigned int traffic_vol;
+};
+
+struct rec_opt_info {
+  string content<>;
+  uint64_t proportion;
+  uint64_t epsilon;
+  uint64_t cap;
+  uint64_t lambda; // in optimization
+  traffic_entry entries<>;
+};
+
+// Stores optimization info for subdomain, key in craq is [fqdn-opt]
+struct subdomain_opt {
+  string fqdn<>;
+  unsigned int current_server_id;
+  bool in_progress;
+  rec_opt_info records<>;
+};
+
 enum attr_type {
   DONAR_TTL = 1,
   LATITUDE = 2,

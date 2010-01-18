@@ -291,6 +291,22 @@ size_t t = time(NULL);
   }
 }
 
+// Sets the optimization data described by sd_opt in craq
+tamed void SubdomainInfo::set_opt_data(struct subdomain_opt sd_opt, 
+  callback<void>::ref cb) {
+  tvars {
+    str subdomain_data;
+    string result;
+    string opt_key;
+  }
+  subdomain_data = xdr2str(sd_opt);
+  opt_key = this->storage.fqdn.cstr();
+  opt_key += "-opt";
+  if (DEBUG) cout << "Updating optimization values for " << opt_key;
+  twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
+    mkevent(result));}
+  TRIGGER(cb);
+}
 
 // Gets optimization data from CRAQ for this subdomain. If no optimization
 // record exists in CRAQ, creates one. 
@@ -312,16 +328,17 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
     str2xdr (sd_opt, subdomain_data);
   }
   if (subdomain_data.len() < 20 || 
-       (sd_opt.records.size() < this->storage.records.size())) {
+       (sd_opt.records.size() != this->storage.records.size())) {
       cout << "CRAQ does not have optimization info for \n" << 
         this->storage.fqdn.cstr();
       // Add new entries for existing records
-      // Todo, check against preferences communicated via DUP
+      // TODO, check against preferences communicated via DUP
       sd_opt.fqdn = this->storage.fqdn;
+      sd_opt.records.setsize(0);
       for (i=0; i < this->storage.records.size(); i++) {
         new_rec_opt.content = this->storage.records[i].content;
         proportion = 1.0 / this->storage.records.size();
-        epsilon = .1;
+        epsilon = .01;
         lambda = 1.0;
         memcpy(&new_rec_opt.proportion, &proportion, 
           sizeof(new_rec_opt.proportion));
@@ -329,7 +346,12 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
         memcpy(&new_rec_opt.lambda, &lambda, sizeof(new_rec_opt.lambda));
 
         sd_opt.records.push_back(new_rec_opt);
+        cout << sd_opt.records.size();
+        cout << this->storage.records.size();
       }
+  }
+  if (this->storage.records.size() != sd_opt.records.size()) {
+    exit(1);
   }
 
   TRIGGER(cb, sd_opt);
@@ -452,12 +474,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
     }
   }
 
-  subdomain_data = xdr2str(sd_opt);
-  opt_key = this->storage.fqdn.cstr();
-  opt_key += "-opt";
-  cout << "Setting update traffic volume for " << opt_key;
-  twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
-    mkevent(result));}
+  twait { this->set_opt_data(sd_opt, mkevent()); }
 
   // Print out totals
   to_add_it = to_add.begin();
@@ -495,13 +512,15 @@ tamed void SubdomainInfo::get_traffic_totals(bool include_me, cb_totals cb) {
   if (DEBUG) cout << "Got traffic totals for " << this->storage.fqdn.cstr() <<
    "\n";
 
+  subdomain_total = 0;
+
   for (i=0; i < sd_opt.records.size(); i++) {
     other_instance_total = 0;
     instance_total = 0;
     // Sum contribution from all nodes
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
       instance_total += sd_opt.records[i].entries[j].traffic_vol;
-      if (!include_me && 
+      if (include_me ||
         (sd_opt.records[i].entries[j].server_id != my_ip_addr)) {
         other_instance_total += sd_opt.records[i].entries[j].traffic_vol;
       }
@@ -515,6 +534,7 @@ tamed void SubdomainInfo::get_traffic_totals(bool include_me, cb_totals cb) {
     out.insert(pair <string, unsigned int> (
       string(sd_opt.records[i].content.cstr()), other_instance_total));
   }
+  if (DEBUG) cout << "Total traffic was " << subdomain_total;
   TRIGGER(cb, out, subdomain_total);
 }
 
@@ -575,7 +595,6 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   // Make sure we have enough records in opt
   cout << sd_opt.records.size();
   cout << this->storage.records.size();
-  assert(sd_opt.records.size() == this->storage.records.size());
 
   cout << "Number of clients: " << num_clients;
   cout << " Number of servers: " << num_servers;
@@ -700,32 +719,49 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   // Store expected traffic given this new policy
   twait {this->update_expected_traffic(10, mkevent());}
 
+  twait { this->get_opt_data(mkevent(sd_opt)); }
+
   // Update optimization paramters (we could do this more efficiently)
+
   twait { this->get_traffic_totals(true, mkevent(totals, total_traffic)); }
+
+  // We can't do anything useful if there is no traffic right now
+  if (total_traffic == 0) {
+    TRIGGER(cb);
+    return;
+  }
+  if (DEBUG) cout << "Total traffic: " << total_traffic;
+
   for (int i = 0; i < num_servers; i++) {
     totals_it = totals.find(this->storage.records[i].content.cstr());
-    P_i = (double) totals_it->second / total_traffic;
+    P_i = (double) totals_it->second / (double) total_traffic;
+
     memcpy(&proportion, &sd_opt.records[i].proportion, sizeof(double));
     memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));    
-    diff = (P_i - proportion) * (P_i - proportion) - (epsilon * epsilon);
+    diff = ((P_i - proportion) * (P_i - proportion)) - (epsilon * epsilon);
     if (diff < 0) continue;
+
     if (DEBUG) {
       cout << "True proportion was " << P_i << " while requested was " <<
-        proportion;
-      cout << "diff^2 " << diff << " exceeded epsilon^2 " << 
+        proportion << endl;
+      cout << " diff^2: " << diff << " exceeded epsilon^2: " << 
         epsilon << "\n";
     }
+
     memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));      
+
     if (DEBUG) {
       cout << "Updating lambda_i for instance " << 
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     } 
-    lambda = lambda + (1.0 / (epsilon * epsilon)) * diff;
+    lambda = lambda + 10 * diff;
     if (DEBUG) cout << "New value " << lambda << "\n";
-    memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));
+	
+    memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
   }
 
+  twait { this->set_opt_data(sd_opt, mkevent()); }
 
   TRIGGER(cb);
 }

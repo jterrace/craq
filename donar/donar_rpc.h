@@ -6,6 +6,71 @@
 
 #include "xdrmisc.h"
 
+
+struct traffic_entry {
+  u_int32_t server_id;
+  u_int32_t update_time;
+  u_int32_t traffic_vol;
+};
+void *traffic_entry_alloc ();
+bool_t xdr_traffic_entry (XDR *, void *);
+RPC_STRUCT_DECL (traffic_entry)
+
+template<class T> bool
+rpc_traverse (T &t, traffic_entry &obj)
+{
+  return rpc_traverse (t, obj.server_id)
+    && rpc_traverse (t, obj.update_time)
+    && rpc_traverse (t, obj.traffic_vol);
+}
+
+
+
+struct rec_opt_info {
+  rpc_str<RPC_INFINITY> content;
+  uint64_t proportion;
+  uint64_t epsilon;
+  uint64_t cap;
+  uint64_t lambda;
+  rpc_vec<traffic_entry, RPC_INFINITY> entries;
+};
+void *rec_opt_info_alloc ();
+bool_t xdr_rec_opt_info (XDR *, void *);
+RPC_STRUCT_DECL (rec_opt_info)
+
+template<class T> bool
+rpc_traverse (T &t, rec_opt_info &obj)
+{
+  return rpc_traverse (t, obj.content)
+    && rpc_traverse (t, obj.proportion)
+    && rpc_traverse (t, obj.epsilon)
+    && rpc_traverse (t, obj.cap)
+    && rpc_traverse (t, obj.lambda)
+    && rpc_traverse (t, obj.entries);
+}
+
+
+
+struct subdomain_opt {
+  rpc_str<RPC_INFINITY> fqdn;
+  u_int32_t current_server_id;
+  bool in_progress;
+  rpc_vec<rec_opt_info, RPC_INFINITY> records;
+};
+void *subdomain_opt_alloc ();
+bool_t xdr_subdomain_opt (XDR *, void *);
+RPC_STRUCT_DECL (subdomain_opt)
+
+template<class T> bool
+rpc_traverse (T &t, subdomain_opt &obj)
+{
+  return rpc_traverse (t, obj.fqdn)
+    && rpc_traverse (t, obj.current_server_id)
+    && rpc_traverse (t, obj.in_progress)
+    && rpc_traverse (t, obj.records);
+}
+
+
 enum attr_type {
   DONAR_TTL = 1,
   LATITUDE = 2,

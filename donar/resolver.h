@@ -61,6 +61,9 @@ class SubdomainInfo {
     unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash,
       ClientRegionEqual > rules;
 
+    void set_opt_data(struct subdomain_opt sd_opt, 
+      callback<void>::ref cb, CLOSURE);
+
     void get_opt_data(callback<void, subdomain_opt>::ref cb, CLOSURE);
 
     void update_expected_traffic(int, callback<void>::ref cb, CLOSURE);

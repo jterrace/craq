@@ -35,6 +35,7 @@ class craq_interface {
 
     void set_key(string key, const char* data, int data_length, cbstr cb, CLOSURE);
     void get_key(string key, cbs cb, CLOSURE);
+    string my_ip_addr;
 
   private:
     ring_iter ring_succ(ID_Value id);
@@ -46,9 +47,10 @@ class craq_interface {
       ptr<callback<void, ptr<chain_meta> > > cb, CLOSURE);
     bool zoo_connected;
     bool ring_init;
+    bool init_interrupted;
     bool strong_consistency;
     string datacenter;
     map<ID_Value, chain_meta> chain_meta_list;
-   map<ID_Value, Node> ring;
+    map<ID_Value, Node> ring;
 };
 

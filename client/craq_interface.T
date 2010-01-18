@@ -36,6 +36,38 @@ tamed static void craq_interface::watcher_wrapper(string path, void* context) {
   my_iface->node_list_watcher(path);
 }
 
+str get_ip_address() {
+  // Gets IP address
+  vec<in_addr> addrs;
+  if (!myipaddrs(&addrs))
+  fatal << "Cannot find my IP address.\n";
+
+  in_addr *addr = addrs.base();
+  in_addr *loopback = NULL;
+  in_addr *touse = NULL;
+  while (addr < addrs.lim ()) {
+    if (ntohl (addr->s_addr) == INADDR_LOOPBACK) {
+      loopback = addr;
+    }
+    else {
+      touse = addr;
+      break; // Take the first non-loopback we find...
+    }
+    addr++;
+  }
+  if (addr >= addrs.lim () && (loopback == NULL))
+    fatal << "Cannot find my IP address.\n";
+
+  if (touse == NULL) {
+    warn << "Using loopback address as my address.\n";
+    touse = loopback;
+  } else {
+    warn << "Using IP address: " << inet_ntoa (*touse) << "\n";
+  }
+  str ids = inet_ntoa (*touse);
+  return ids;
+}
+
 ID_Value get_sha1(string msg) {
         byte buffer[SHA::DIGESTSIZE];
         SHA().CalculateDigest(buffer, (byte *)msg.c_str(), msg.length());
@@ -72,10 +104,11 @@ tamed void craq_interface::init(string zoo_list, cbbool cb) {
     bool connect_success;
     bool list_success;
   }
+  my_ip_addr = string(get_ip_address().cstr());
   twait {connect_to_manager(zoo_list, mkevent(connect_success));}
   twait {populate_node_list(mkevent(list_success));}
   if (!(connect_success & list_success)) {
-    warn << "Error connecting to zookeeper\n";
+    cout << "Error connecting to zookeeper\n";
     TRIGGER(cb, false);
   }
   TRIGGER(cb, true);
@@ -106,6 +139,7 @@ tamed void craq_interface::set_key(string key, const char* data, int data_length
 
   if (fd < 0) {
     TRIGGER(cb, "ERROR\n");
+    return;
   }
 
   twait { get_chain_info(id, mkevent(chain_info)); }
@@ -113,9 +147,9 @@ tamed void craq_interface::set_key(string key, const char* data, int data_length
   // If this is new, add a chain
   if (chain_info == NULL) {
     add_arg.id = id.get_rpc_id();
-    add_arg.chain_size = 3;
+    add_arg.chain_size = 4;
     add_arg.data_centers.setsize(1);
-    add_arg.data_centers[0] = "data";
+    add_arg.data_centers[0] = "namecast";
   
     // Add chain at the head
     twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
@@ -164,7 +198,13 @@ tamed void craq_interface::get_key(string key, cbs cb) {
   id = get_sha1(key);
 
   twait{ get_chain_info(id, mkevent(chain_info)); }
-  
+  if (BUG) {
+    cout << "Got chain info for key: ";
+    cout << key.c_str();
+    cout << "\n";
+    fflush(stdout);
+  }
+ 
   if (chain_info == NULL) {
     TRIGGER(cb, str(("NOT FOUND: " + key + "\n").c_str()));
     return;
@@ -181,6 +221,10 @@ tamed void craq_interface::get_key(string key, cbs cb) {
 
   twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(),
     &cli, &chain_node_1, mkevent(fd)); }
+  if (BUG) {
+    cout << "Got RPC client for node with IP: " << succ->second.getIp().c_str();
+    fflush(stdout);
+  }
 
   if (fd < 0) {
     TRIGGER(cb, str("ERROR"));
@@ -196,7 +240,10 @@ tamed void craq_interface::get_key(string key, cbs cb) {
     TRIGGER(cb, str("ERROR"));
     return;
   }
-  if (BUG) cout << "Got object of size " << ret.data.size();
+  if (BUG) {
+    cout << "Got object of size " << ret.data.size();
+    fflush(stdout);
+  }
   TRIGGER(cb, str((char*)&(ret.data[0]), ret.data.size()));
 }
 
@@ -210,7 +257,7 @@ tamed void craq_interface::connect_to_manager(string zoo_list, cbbool cb) {
   }
 
   if (!success) {
-    warn << "Could not initialize ZooKeeper.\n";
+    cout << "Could not initialize ZooKeeper.\n";
   }
 
   TRIGGER(cb, success);
@@ -227,11 +274,11 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
     Node new_node;
   }
   twait {
-    czoo_get_children_2("/nodes/data", &watcher_wrapper, this,
+    czoo_get_children_2("/nodes/namecast", &watcher_wrapper, this,
       mkevent(node_list));
   }
   if (node_list == NULL) {
-    warn << "Erorr retreiving initial node list\n";
+    cout << "Erorr retreiving initial node list\n";
     TRIGGER(cb, false);
   }
   else {
@@ -244,7 +291,7 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
   twait {
     for (int i=0; i < (*node_list).size(); i++) {
       node_name = (*node_list)[i];
-      search_str = "/nodes/data/" + node_name;
+      search_str = "/nodes/namecast/" + node_name;
       czoo_get(search_str, mkevent(node_vals[i]));
     }
   }
@@ -252,7 +299,7 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
   // Assure value for each node
   for (int i=0; i < node_vals.size(); i++) {
     if (node_vals[i] == NULL) {
-      warn << "Error retreiving value for node " << 
+      cout << "Error retreiving value for node " << 
         (*node_list)[i].c_str() << "\n";
       TRIGGER(cb, false);
     }
@@ -261,6 +308,7 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
       new_node.set_from_string(*node_vals[i]);
       ring[new_node.getId()] = new_node;
       zoo_nodes[(*node_list)[i]] = new_node;
+      cout << "Got node " << new_node.toString() << "\n";
       delete node_vals[i];
     }
   }
@@ -271,30 +319,90 @@ tamed void craq_interface::populate_node_list(cbbool cb) {
 
 
 tamed void craq_interface::node_list_watcher(string path) {
-  tvars{}
-/*  
-  if (!ring_init) {
-    fatal << "Can't update node list while retrieving initial list.\n";
+  tvars{
+    vector<string> * ret_node_list;
+    set<string> new_list;
+    int i, j;
+    map<string, Node>::iterator old_it;
+    set<string>::iterator new_it;
+    set<string> to_add;
+    set<string>::iterator it;
+    vector<string *> add_rets;
+    vector<string> add_ids;
+    rendezvous_t<int> rv;
+    string search;
+    string * new_val;
+    Node new_node;
   }
+  if(!ring_init) {
+    init_interrupted = true;
+    warn << "Updated node list while doing initial list. \
+      Re-building initial list.\n";
+      return;
+    }
+    cout << "Running watcher function\n";
+    fflush(stdout);
+    twait { czoo_get_children_2("/nodes/namecast", &watcher_wrapper, this, 
+      mkevent(ret_node_list)); }
+    if(ret_node_list == NULL) {
+      fatal << "Error retrieving updated node list!\n";
+      }
+      for(i=0; i<ret_node_list->size(); i++) {
+        new_list.insert( (*ret_node_list)[i] );
+      }
+      delete ret_node_list;
+ old_it = zoo_nodes.begin();
+        new_it = new_list.begin();
 
-  twait { czoo_get_children("/nodes/data", &node_list_watcher,
-    mkevent(ret_node_list)); }
-  if (ret_node_list == NULL) {
-    fatal << "Error retrieving updated node list!\n";
-  } 
-  for (i=0; i<ret_node_list->size(); i++) {
-    new_list.insert( (*ret_node_list)[i] );
-  }
-  delete ret_node_list;
+      while(old_it != zoo_nodes.end() || new_it != new_list.end()) {
+        if(old_it == zoo_nodes.end()) {
+          to_add.insert(*new_it);
+          new_it++;
+        } else if( new_it == new_list.end() ) {
+            cout << "Deleting";
+            cout << old_it->first.c_str();
 
-  old_it = zoo_nodes.begin();
-  new_it = new_list.begin();
+           if (old_it->first.find(my_ip_addr) >= 0) {
+             cout << "Chain node on this host died";
+             fflush(stdout);
+           }
+           zoo_nodes.erase(old_it++);
+        }
+        else if( old_it->first == *new_it ) {
+          old_it++;
+          new_it++;
+      } else if( old_it->first < *new_it ) {
+         cout << "Deleting";
+         cout << old_it->first.c_str();
+         if (old_it->first.find(my_ip_addr) >= 0) {
+           cout << "Chain node on this host died";
+           fflush(stdout);
+         }
+         zoo_nodes.erase(old_it++);
 
+       } else if( old_it->first > *new_it ) {
+          to_add.insert(*new_it);
+          new_it++;
+         }
+      }
 
-  while (old_it != zoo_nodes.end() || new_it != new_list.end()) {
-    if (old_it == zoo_nodes.end()) {
-  }
-*/
+        add_ids.resize(to_add.size());
+        add_rets.resize(to_add.size());
+        for( i=0, it = to_add.begin(); it != to_add.end(); i++, it++ ) {
+                search = "/nodes/namecast/" + (*it);
+                add_ids[i] = *it;
+        czoo_get(search, mkevent(rv, i, add_rets[i]));
+        }
+        for(i=0; i<add_rets.size(); i++) {
+                twait(rv, j);
+                if(add_rets[j] == NULL) {
+                        fatal << "Failed to retrieve information about a node!\n";
+                }
+                new_node.set_from_string(*add_rets[j]);
+                delete add_rets[j];
+                zoo_nodes[add_ids[j]] = new_node;
+        }
+
 }
 
 tamed void craq_interface::get_chain_info(ID_Value chain_id, 
@@ -322,7 +430,12 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   }
 
   if (val == NULL) {
-    if (BUG) cout << "Could not find key " << chain_id.toString() << "\n";
+    if (BUG) {
+      cout << "Could not find key ";
+      cout << chain_id.toString().c_str();
+      cout << "\n";
+      fflush(stdout);
+    }
     ret = NULL;
     TRIGGER(cb, ret);
     return;
@@ -332,14 +445,14 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   iss.str(*val);
   delete val;
   if (!(iss >> ret->chain_size)) {
-    if (BUG) warn << "Got bad value back from zookeeper chain node!\n";
+    if (BUG) cout << "Got bad value back from zookeeper chain node!\n";
     TRIGGER(cb, ret);
     return;
   }
   if (iss.eof()) {
     if (BUG) {
-      warn << "Got no data centers for chain: ";
-      warn << chain_id.toString().c_str();
+      cout << "Got no data centers for chain: ";
+      cout << chain_id.toString().c_str();
     }
   }
   while (!iss.eof()) {
@@ -360,17 +473,17 @@ tamed static void main2() {
     string result; 
   }
   zoo_list = "127.0.0.1:2181";
-  warn << "Interface created, attempting to connect\n"; 
+  cout << "Interface created, attempting to connect\n"; 
  
   twait {
     iface.init(zoo_list, mkevent(init_success));
   }
 
   if (init_success) {
-    warn << "Connection established.\n";
+    cout << "Connection established.\n";
   }
   else {
-    warn << "Connection establishemnt failed.\n";
+    cout << "Connection establishemnt failed.\n";
   }
 
   twait {iface.set_key(string("patrick"), "foo", 3, mkevent(set_result));}

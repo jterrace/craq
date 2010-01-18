@@ -96,6 +96,7 @@ map<ID_Value, Node> ring;
 Node my_node;
 string my_node_str;
 bool ring_init = false;
+bool init_interrupted = false;
 ring_iter my_node_ptr;
 ID_Value my_id;
 string datacenter;
@@ -139,13 +140,14 @@ str get_ip_address() {
         }
         if (addr >= addrs.lim () && (loopback == NULL))
                 fatal << "Cannot find my IP address.\n";
-        str ids = inet_ntoa (*touse);
+   
         if (touse == NULL) {
                 warn << "Using loopback address as my address.\n";
                 touse = loopback;
         } else {
-        	warn << "Using IP address: " << ids << "\n";
+        	warn << "Using IP address: " << inet_ntoa (*touse) << "\n";
         }
+        str ids = inet_ntoa (*touse);
         return ids;
 }
 
@@ -176,6 +178,8 @@ tamed void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain_meta> 
 
 	twait{ czoo_get("/keys/" + chain_id.toString(), mkevent(val)); }
 	if(val == NULL) {
+                warn << "Failed to get from zookeeper: ";
+                warn << chain_id.toString().c_str();
 		ret = NULL;
 		TRIGGER(cb, ret);
 		return;
@@ -495,6 +499,7 @@ tamed void process_tail_read(svccb * sbp) {
 tamed void process_tail_read_ex(svccb * sbp) {
 	tvars {
 		tail_read_ex_arg parg;
+                tail_read_ex_ret empty;
 		const blob * repl;
 		ID_Value id;
 		key_iter it;
@@ -529,7 +534,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		//CRAQ tail read
 
 		if(it == key_meta_list.end() ) {
-			sbp->replyref(NULL);
+			sbp->replyref(empty);
 			return;
 		}
 
@@ -549,7 +554,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 			if(chain_info == NULL) {
 				fatal << "Couldn't get chain info in read!\n";
-				sbp->replyref(NULL);
+				sbp->replyref(empty);
 				return;
 			}
 
@@ -571,7 +576,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 			if( fd<0 ) {
 				report_bad_node(tail);
-				sbp->replyref(NULL);
+				sbp->replyref(empty);
 				return;
 			}
 
@@ -593,13 +598,13 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 			if(e) {
 				report_bad_node(rit->second);
-				sbp->replyref(NULL);
+				sbp->replyref(empty);
 				return;
 			} else {
 				//Refetch key
 				it = key_meta_list.find(id);
 				if(it == key_meta_list.end() ) {
-					sbp->replyref(NULL);
+					sbp->replyref(empty);
 					return;
 				}
 
@@ -618,7 +623,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				if(kit == it->second.pending_list.end()) {
 					kit = it->second.pending_list.find(it->second.max_pending); //really wrong
 					if(kit == it->second.pending_list.end()) {
-						sbp->replyref(NULL);
+						sbp->replyref(empty);
 						return;
 					}
 				}
@@ -633,7 +638,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 	} else {
 		//CR Read
 		if(it == key_meta_list.end() || !(it->second).is_tail ) {
-			sbp->replyref(NULL);
+			sbp->replyref(empty);
 			return;
 		}
 
@@ -1731,8 +1736,9 @@ node_list_watcher(string path) {
 	}
 
     if(!ring_init) {
-    	//TODO: Fix this
-    	fatal << "Updated node list while doing initial list. Not implemented.\n";
+        init_interrupted = true;
+    	warn << "Updated node list while doing initial list. Re-building initial list.\n";
+        return;
     }
 
 	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(ret_node_list)); }
@@ -1852,35 +1858,41 @@ register_to_manager(int my_port, string zoo_list) {
 	//warn << "sleeping " << ret << "\n";
 	//delay(5000);
 	//warn << "done sleeping\n";
+	
+        // Allows us to re-build list if nodes change as we're building it
+        while(true) {
+	    twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
+	    if(node_list == NULL) {
+		    fatal << "Error retrieving initial node list!\n";
+	    }
+	    zoo_node_count = (*node_list).size();
+	    node_vals.resize((*node_list).size());
+	    //warn << "size " << (*node_list).size() << "\n";
+	    twait {
+		    for(i=0; i<(*node_list).size(); i++) {
+			    find = (*node_list)[i];
+			    search = "/nodes/" + datacenter + "/" + find;
+			    czoo_get(search, mkevent(node_vals[i]));
+		    }
+	    }
+            if (init_interrupted) {
+              init_interrupted = false;
+              continue;
+            }
+	    for(i=0; i<node_vals.size(); i++) {
+		    if(node_vals[i] == NULL) {
+			    fatal << "Error occurred retrieving initial node value!\n";
+		    }
+		    new_node.set_from_string(*node_vals[i]);
+		    ring[new_node.getId()] = new_node;
+		    zoo_nodes[(*node_list)[i]] = new_node;
+		    warn << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
+		    delete node_vals[i];
+	    }
 
-	twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
-	if(node_list == NULL) {
-		fatal << "Error retrieving initial node list!\n";
-	}
-	zoo_node_count = (*node_list).size();
-	node_vals.resize((*node_list).size());
-	//warn << "size " << (*node_list).size() << "\n";
-	twait {
-		for(i=0; i<(*node_list).size(); i++) {
-			find = (*node_list)[i];
-			search = "/nodes/" + datacenter + "/" + find;
-			czoo_get(search, mkevent(node_vals[i]));
-		}
-	}
-
-	for(i=0; i<node_vals.size(); i++) {
-		if(node_vals[i] == NULL) {
-			fatal << "Error occurred retrieving initial node value!\n";
-		}
-		new_node.set_from_string(*node_vals[i]);
-		ring[new_node.getId()] = new_node;
-		zoo_nodes[(*node_list)[i]] = new_node;
-		warn << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
-		delete node_vals[i];
-	}
-
-	delete node_list;
-
+	    delete node_list;
+            if (!init_interrupted) break;
+        }
 	update_my_ptr();
 	ring_init = true;
 

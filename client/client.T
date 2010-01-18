@@ -6,6 +6,7 @@
 #include "sha.h"
 #include "tame.h"
 #include "tame_rpcserver.h"
+#include "../logging/debug.h"
 #include "parseopt.h"
 #include "tame_io.h"
 #include "arpc.h"
@@ -173,7 +174,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, "ERROR " + key + "\r\n");
+		TRIGGER(cb, "ERROR getting RPC client: " + key + "\r\n");
 		return;
 	}
 
@@ -186,7 +187,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 
 		twait { cli->call(ADD_CHAIN, &add_arg, &add_ret, mkevent(e)); }
 		if(e || add_ret == ADD_CHAIN_FAILURE) {
-			TRIGGER(cb, "ERROR " + key + "\r\n");
+			TRIGGER(cb, "ERROR adding chain: " + key + "\r\n");
 			return;
 		}
 	}
@@ -196,7 +197,7 @@ tamed static void set_key(string key, blob data, cbstr cb) {
 	wrt_arg.data = data;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
 	if(e || !rc) {
-		TRIGGER(cb, "ERROR " + key + "\r\n");
+		TRIGGER(cb, "ERROR writing to RPC client: " + key + "\r\n");
 		return;
 	}
 
@@ -236,15 +237,23 @@ tamed static void get_key(string key, cbblob cb) {
 
 	twait { get_rpc_cli (succ->second.getIp().c_str(),succ->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
-		TRIGGER(cb, make_blob(("ERROR " + key + "\r\n").c_str()));
+		TRIGGER(cb, make_blob(("ERROR getting rpc client: " + key + "\r\n").c_str()));
 		return;
 	}
 	arg.id = id.get_rpc_id();
 	arg.chain = id.get_rpc_id();
-	arg.dirty = false;
+	arg.dirty = false; 
+        if(BUG) {
+          warn << "Reading key ";
+          warn << key.c_str();
+          warn << "\n";
+          warn << "Reading from " << succ->second.getIp().c_str();
+          warn << "\n";
+          fflush(stdout);
+        }
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
-		TRIGGER(cb, make_blob(("ERROR " + key + "\r\n").c_str()));
+		TRIGGER(cb, make_blob(("ERROR reading chain: " + key + "\r\n").c_str()));
 		return;
 	}
 
