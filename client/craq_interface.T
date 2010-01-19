@@ -180,6 +180,10 @@ tamed void craq_interface::set_key(string key, const char* data, int data_length
   TRIGGER(cb, "STORED!\n");
 }
 
+int craq_interface::number_of_nodes() {
+  return ring.size();
+}
+
 tamed void craq_interface::get_key(string key, cbs cb) {
   tvars {
     ID_Value id;

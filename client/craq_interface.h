@@ -31,6 +31,7 @@ class craq_interface {
   public:
     craq_interface();
     ~craq_interface();
+    int number_of_nodes();
     void init(string zoo_list, cbbool cb, CLOSURE);
 
     void set_key(string key, const char* data, int data_length, cbstr cb, CLOSURE);
