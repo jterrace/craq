@@ -10,7 +10,7 @@
 struct traffic_entry {
   u_int32_t server_id;
   u_int32_t update_time;
-  u_int32_t traffic_vol;
+  uint64_t traffic_vol;
 };
 void *traffic_entry_alloc ();
 bool_t xdr_traffic_entry (XDR *, void *);

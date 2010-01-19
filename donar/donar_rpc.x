@@ -2,7 +2,7 @@
 struct traffic_entry {
   unsigned int server_id;
   unsigned int update_time;
-  unsigned int traffic_vol;
+  uint64_t traffic_vol;
 };
 
 struct rec_opt_info {

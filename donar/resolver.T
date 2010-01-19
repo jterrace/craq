@@ -457,15 +457,15 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
         for (j=0; j<sd_opt.records[i].entries.size(); j++) {
           if (sd_opt.records[i].entries[j].server_id == my_ip_addr) {
             sd_opt.records[i].entries[j].update_time = time(NULL);
-            sd_opt.records[i].entries[j].traffic_vol = 
-              to_add_it->second;
+            memcpy(&sd_opt.records[i].entries[j].traffic_vol,
+              &to_add_it->second, sizeof(double));
             seen = true;
           }
         }
         if (seen == false) {
           new_entry.server_id = my_ip_addr;
           new_entry.update_time = time(NULL);
-          new_entry.traffic_vol = to_add_it->second;
+          memcpy(&new_entry.traffic_vol, &to_add_it->second, sizeof(double));
           sd_opt.records[i].entries.push_back(new_entry);
         }
         seen = false;
@@ -491,26 +491,22 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
   TRIGGER(cb);
 }
 
-// Probe the CRAQ backend to get the wide-area totals of traffic being routed
-// to an instance. If include_me is true, the instance map includes traffic
+// Given an struct subdomain_opt add up the total traffic to each instance.
+// If include_me is true, the instance map includes traffic
 // from this node.
-tamed void SubdomainInfo::get_traffic_totals(bool include_me, cb_totals cb) {
+tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
+    bool include_me, cb_totals cb) {
   tvars {
     unordered_map <string, unsigned int> out;
     string opt_key;
     str subdomain_data;
-    struct subdomain_opt sd_opt;
     int i;
     int j;
+    double temp;
     unsigned int other_instance_total;
     unsigned int instance_total;
     unsigned int subdomain_total;
   }
-
-  twait { get_opt_data(mkevent(sd_opt)); }  
-
-  if (DEBUG) cout << "Got traffic totals for " << this->storage.fqdn.cstr() <<
-   "\n";
 
   subdomain_total = 0;
 
@@ -519,10 +515,11 @@ tamed void SubdomainInfo::get_traffic_totals(bool include_me, cb_totals cb) {
     instance_total = 0;
     // Sum contribution from all nodes
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
-      instance_total += sd_opt.records[i].entries[j].traffic_vol;
+      memcpy(&temp, &sd_opt.records[i].entries[j].traffic_vol, sizeof(double));
+      instance_total += temp;
       if (include_me ||
         (sd_opt.records[i].entries[j].server_id != my_ip_addr)) {
-        other_instance_total += sd_opt.records[i].entries[j].traffic_vol;
+        other_instance_total += temp;
       }
     }
     subdomain_total += instance_total;
@@ -577,11 +574,12 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     unsigned int total_traffic;
   }
 
-  // Get global data
-  twait { this->get_traffic_totals(false, mkevent(totals, total_traffic)); }  
-
   // Get optimization parameters
   twait{ this->get_opt_data(mkevent(sd_opt)); }
+
+  // Get global data
+  twait { this->get_traffic_totals(sd_opt, 
+   false, mkevent(totals, total_traffic)); }  
 
   // Get client request data
   props = this->get_client_props(10);
@@ -723,7 +721,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   // Update optimization paramters (we could do this more efficiently)
 
-  twait { this->get_traffic_totals(true, mkevent(totals, total_traffic)); }
+  twait { this->get_traffic_totals(sd_opt, true, 
+    mkevent(totals, total_traffic)); }
 
   // We can't do anything useful if there is no traffic right now
   if (total_traffic == 0) {
