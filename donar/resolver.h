@@ -69,7 +69,7 @@ class SubdomainInfo {
     void update_expected_traffic(int, callback<void>::ref cb, CLOSURE);
 
     void get_traffic_totals(struct subdomain_opt sd_opt, bool include_me,
-      callback<void, unordered_map<std::string, unsigned int >, unsigned int >::ref cb, CLOSURE);
+      callback<void, unordered_map<std::string, double >, double >::ref cb, CLOSURE);
 };
 
 typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*, 
@@ -77,7 +77,7 @@ typedef unordered_map<ClientRegion, unordered_map<size_t, unsigned int>*,
 
 typedef unordered_map<size_t, unsigned int>::iterator num_request_iter;
 
-typedef callback<void, unordered_map<std::string, unsigned int>, unsigned int>::ref cb_totals;
+typedef callback<void, unordered_map<std::string, double>, double>::ref cb_totals;
 
 typedef unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash, ClientRegionEqual >::iterator rules_iter;
 

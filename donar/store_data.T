@@ -37,7 +37,7 @@ tamed static void main2() {
     str foo;
   }
   
-  zoo_list = "ernie.cs.princeton.edu:9876";
+  zoo_list = "localhost:9876";
 
   twait {
     iface.init(zoo_list, mkevent(init_success));
@@ -50,7 +50,7 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
   sd.seq_number = 2;
-  sd.fqdn = "d.com";
+  sd.fqdn = "f.com";
   rec.type = "A";
   rec.content = "144.82.111.20";
   rec.ttl = 10;

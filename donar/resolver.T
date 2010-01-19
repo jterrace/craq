@@ -338,7 +338,7 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
       for (i=0; i < this->storage.records.size(); i++) {
         new_rec_opt.content = this->storage.records[i].content;
         proportion = 1.0 / this->storage.records.size();
-        epsilon = .01;
+        epsilon = .05;
         lambda = 1.0;
         memcpy(&new_rec_opt.proportion, &proportion, 
           sizeof(new_rec_opt.proportion));
@@ -365,8 +365,8 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
     size_t now;
     client_requests_iter client_it;
     unordered_map<size_t, unsigned int>* requests;
-    vector<pair<record, unsigned int>> to_add;
-    vector<pair<record, unsigned int>>::iterator to_add_it;
+    vector<pair<record, double>> to_add;
+    vector<pair<record, double>>::iterator to_add_it;
     num_request_iter time_it;
     rules_iter rules_it;
     client_rule_iter c_rule_it;
@@ -384,7 +384,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
 
   // Populate record list with blanks
   for (i=0; i < this->storage.records.size(); i++) {
-    to_add.push_back(pair<record, unsigned int> (this->storage.records[i], 0));
+    to_add.push_back(pair<record, double> (this->storage.records[i], 0.0));
   }
 
   // TODO fix N^2 components here
@@ -497,18 +497,18 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
 tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
     bool include_me, cb_totals cb) {
   tvars {
-    unordered_map <string, unsigned int> out;
+    unordered_map <string, double> out;
     string opt_key;
     str subdomain_data;
     int i;
     int j;
     double temp;
-    unsigned int other_instance_total;
-    unsigned int instance_total;
-    unsigned int subdomain_total;
+    double other_instance_total;
+    double instance_total;
+    double subdomain_total;
   }
 
-  subdomain_total = 0;
+  subdomain_total = 0.0;
 
   for (i=0; i < sd_opt.records.size(); i++) {
     other_instance_total = 0;
@@ -528,7 +528,7 @@ tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
         sd_opt.records[i].content.cstr() << " " << other_instance_total << "\n";
     }
 
-    out.insert(pair <string, unsigned int> (
+    out.insert(pair <string, double> (
       string(sd_opt.records[i].content.cstr()), other_instance_total));
   }
   if (DEBUG) cout << "Total traffic was " << subdomain_total;
@@ -569,9 +569,10 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     MSKrescodee trmcode;
     double temp, S_n, P_other, P_i, lambda, proportion, epsilon, diff;
     double *result;
-    unordered_map <string, unsigned int> totals;
-    unordered_map <string, unsigned int>::iterator totals_it;
-    unsigned int total_traffic;
+    double update_prob;
+    unordered_map <string, double> totals;
+    unordered_map <string, double>::iterator totals_it;
+    double total_traffic;
   }
 
   // Get optimization parameters
@@ -661,8 +662,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         exit(1);
       }
 
-      P_other = (float) totals_it->second / total_traffic;
-      if (total_traffic == 0) P_other = 0.0;
+      P_other = totals_it->second / total_traffic;
+      if (total_traffic == 0.0) P_other = 0.0;
 
       // Add S_n * 2 * alpha_c * (P_other - w) * lambda
       memcpy(&proportion, &sd_opt.records[j].proportion, sizeof(double));
@@ -719,13 +720,20 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   twait { this->get_opt_data(mkevent(sd_opt)); }
 
+
+  update_prob = 1.0 / craq.number_of_nodes();
+  if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
+    TRIGGER(cb);
+    return;
+  }
+
   // Update optimization paramters (we could do this more efficiently)
 
   twait { this->get_traffic_totals(sd_opt, true, 
     mkevent(totals, total_traffic)); }
 
   // We can't do anything useful if there is no traffic right now
-  if (total_traffic == 0) {
+  if (total_traffic == 0.0) {
     TRIGGER(cb);
     return;
   }
@@ -733,7 +741,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   for (int i = 0; i < num_servers; i++) {
     totals_it = totals.find(this->storage.records[i].content.cstr());
-    P_i = (double) totals_it->second / (double) total_traffic;
+    P_i = totals_it->second / total_traffic;
 
     memcpy(&proportion, &sd_opt.records[i].proportion, sizeof(double));
     memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));    
