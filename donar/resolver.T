@@ -733,13 +733,13 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   twait { this->get_opt_data(mkevent(sd_opt)); }
 
-
+/*
   update_prob = 1.0 / craq.number_of_nodes();
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
     return;
   }
-
+*/
   // Update optimization paramters (we could do this more efficiently)
 
   twait { this->get_traffic_totals(sd_opt, true, 
@@ -759,13 +759,12 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     memcpy(&proportion, &sd_opt.records[i].proportion, sizeof(double));
     memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));    
     diff = ((P_i - proportion) * (P_i - proportion)) - (epsilon * epsilon);
-    if (diff < 0) continue;
 
     if (DEBUG) {
       cout << "True proportion was " << P_i << " while requested was " <<
         proportion << endl;
-      cout << " diff^2: " << diff << " exceeded epsilon^2: " << 
-        epsilon << "\n";
+      cout << " diff^2: " << (diff * diff) << " exceeded epsilon^2: " << 
+        (epsilon * epsilon) << "\n";
     }
 
     memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));      
@@ -775,9 +774,11 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     } 
-    lambda = lambda + 10 * diff;
+    lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
+
+    if (lambda < 0.0) continue;
     if (DEBUG) cout << "New value " << lambda << "\n";
-	
+	   
     memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
   }
 
