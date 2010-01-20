@@ -121,6 +121,8 @@ rpc_print (const strbuf &sb, const subdomain_opt &obj, int recdepth,
   }
   rpc_print (sb, obj.fqdn, recdepth, "fqdn", npref);
   sb << sep;
+  rpc_print (sb, obj.seq_number, recdepth, "seq_number", npref);
+  sb << sep;
   rpc_print (sb, obj.current_server_id, recdepth, "current_server_id", npref);
   sb << sep;
   rpc_print (sb, obj.in_progress, recdepth, "in_progress", npref);
@@ -159,6 +161,15 @@ rpc_print (const strbuf &sb, const attr_type &obj, int recdepth,
     break;
   case LONGITUDE:
     p = "LONGITUDE";
+    break;
+  case SPLIT_PROPORTION:
+    p = "SPLIT_PROPORTION";
+    break;
+  case SPLIT_EPSILON:
+    p = "SPLIT_EPSILON";
+    break;
+  case BANDWIDTH_CAP:
+    p = "BANDWIDTH_CAP";
     break;
   default:
     p = NULL;

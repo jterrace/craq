@@ -54,6 +54,7 @@ Connection* quova_conn;
 Connection* donar_conn;
 craq_interface craq;
 unsigned int my_ip_addr;
+unsigned int update_interval;
 
 string last; // PDNS hack
 
@@ -316,7 +317,7 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
     str subdomain_data;
     subdomain_opt sd_opt;
     rec_opt_info new_rec_opt;
-    int i;
+    int i, j;
     double proportion, lambda, epsilon;
   }
 
@@ -328,17 +329,29 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
     str2xdr (sd_opt, subdomain_data);
   }
   if (subdomain_data.len() < 20 || 
-       (sd_opt.records.size() != this->storage.records.size())) {
-      cout << "CRAQ does not have optimization info for \n" << 
+       (sd_opt.records.size() != this->storage.records.size()) ||
+       (sd_opt.seq_number < this->storage.seq_number)) {
+      cout << "CRAQ does not have updated optimization info for \n" << 
         this->storage.fqdn.cstr();
+
       // Add new entries for existing records
-      // TODO, check against preferences communicated via DUP
+      sd_opt.seq_number = this->storage.seq_number;
       sd_opt.fqdn = this->storage.fqdn;
       sd_opt.records.setsize(0);
       for (i=0; i < this->storage.records.size(); i++) {
         new_rec_opt.content = this->storage.records[i].content;
-        proportion = 1.0 / this->storage.records.size();
-        epsilon = .05;
+        proportion =  1.0 / this->storage.records.size();
+        epsilon = .02;
+        for (j=0; j < this->storage.records[i].attrs.size(); j++) {
+          if (this->storage.records[i].attrs[j].type == SPLIT_PROPORTION) {
+            memcpy(&proportion, &this->storage.records[i].attrs[j].data, 
+                   sizeof(double));
+          }  
+          if (this->storage.records[i].attrs[j].type == SPLIT_EPSILON) {
+            memcpy(&proportion, &this->storage.records[i].attrs[j].data,
+                   sizeof(double));
+          } 
+        }
         lambda = 1.0;
         memcpy(&new_rec_opt.proportion, &proportion, 
           sizeof(new_rec_opt.proportion));
@@ -774,13 +787,17 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 }
 
 void client_debug(callback<void>::ref cb, CLOSURE);
-
 tamed void client_debug(callback<void>::ref cb) {
   tvars {
     SubdomainInfo* sd;
+    unsigned int next_update_interval;
   }
   TRIGGER(cb);
+  next_update_interval = (rand() % update_interval) + 1;
   while (true) {
+    if (DEBUG) 
+      cout << "Delaying optimization " << next_update_interval << " seconds\n";
+    twait { delaycb(next_update_interval, 0, mkevent()); }
     subdomain_cache_it = subdomain_cache.begin();
     cout << "Running optimization\n\n";
     while (subdomain_cache_it != subdomain_cache.end()) {
@@ -792,7 +809,8 @@ tamed void client_debug(callback<void>::ref cb) {
       //twait {sd->update_expected_traffic(10, mkevent());}
       subdomain_cache_it++;
     }
-    twait { delaycb(10, 0, mkevent()); }
+    next_update_interval = (update_interval - next_update_interval) + 
+                           (rand() % update_interval + 1);
   }
 }
 
@@ -915,7 +933,6 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     str2xdr(sd, subdomain_data);
 
     to_insert.storage = sd;
-    to_insert.rules_populated = false;
     to_insert.validated = time(NULL);
     subdomain_cache.insert(to_insert);
     if (DEBUG) {
@@ -933,8 +950,9 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     str2xdr(sd, subdomain_data);
     if (sd.seq_number > subdomain_cache_it->storage.seq_number) {
       to_insert.storage = sd;
-      to_insert.rules_populated = false;
       to_insert.validated = time(NULL);
+      // Save request data from old entry
+      to_insert.num_requests = subdomain_cache_it->num_requests;
       subdomain_cache.erase(subdomain_cache_it);
       subdomain_cache.insert(to_insert);
       if (DEBUG) {
@@ -1009,6 +1027,10 @@ tamed static void process(int fd) {
       input.str(str(resp).cstr());
       input >> type;
       input >> qname;
+      // Coral Hack :)
+      if (qname.find("nyud.net")!=string::npos) {
+        qname = "nyud.net";
+      }
 
       input >> qclass;
       input >> qtype;
@@ -1153,6 +1175,8 @@ tamed static void main2(int argc, char** argv) {
   ct.add("ZooList", &zoo_list);
   ct.add("SockPath", &sock_path);
   ct.add("MosekKeyFile", &mosek_file);
+  ct.insert(New conftab_int<unsigned int>
+      ("UpdateInterval", &update_interval, 0, 10000, 500));
 
   line = 0;
   while (pa.getline(&av, &line)) {

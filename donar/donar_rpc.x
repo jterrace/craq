@@ -17,6 +17,7 @@ struct rec_opt_info {
 // Stores optimization info for subdomain, key in craq is [fqdn-opt]
 struct subdomain_opt {
   string fqdn<>;
+  hyper seq_number;
   unsigned int current_server_id;
   bool in_progress;
   rec_opt_info records<>;
@@ -25,7 +26,10 @@ struct subdomain_opt {
 enum attr_type {
   DONAR_TTL = 1,
   LATITUDE = 2,
-  LONGITUDE = 3
+  LONGITUDE = 3,
+  SPLIT_PROPORTION = 4,
+  SPLIT_EPSILON = 5,
+  BANDWIDTH_CAP = 6
 };
 
 struct record_attr {

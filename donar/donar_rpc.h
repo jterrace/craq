@@ -53,6 +53,7 @@ rpc_traverse (T &t, rec_opt_info &obj)
 
 struct subdomain_opt {
   rpc_str<RPC_INFINITY> fqdn;
+  int64_t seq_number;
   u_int32_t current_server_id;
   bool in_progress;
   rpc_vec<rec_opt_info, RPC_INFINITY> records;
@@ -65,6 +66,7 @@ template<class T> bool
 rpc_traverse (T &t, subdomain_opt &obj)
 {
   return rpc_traverse (t, obj.fqdn)
+    && rpc_traverse (t, obj.seq_number)
     && rpc_traverse (t, obj.current_server_id)
     && rpc_traverse (t, obj.in_progress)
     && rpc_traverse (t, obj.records);
@@ -75,6 +77,9 @@ enum attr_type {
   DONAR_TTL = 1,
   LATITUDE = 2,
   LONGITUDE = 3,
+  SPLIT_PROPORTION = 4,
+  SPLIT_EPSILON = 5,
+  BANDWIDTH_CAP = 6,
 };
 void *attr_type_alloc ();
 bool_t xdr_attr_type (XDR *, void *);

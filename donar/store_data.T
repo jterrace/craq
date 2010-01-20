@@ -50,7 +50,7 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
   sd.seq_number = 2;
-  sd.fqdn = "f.com";
+  sd.fqdn = "e.com";
   rec.type = "A";
   rec.content = "144.82.111.20";
   rec.ttl = 10;
