@@ -147,7 +147,7 @@ tamed void craq_interface::set_key(string key, const char* data, int data_length
   // If this is new, add a chain
   if (chain_info == NULL) {
     add_arg.id = id.get_rpc_id();
-    add_arg.chain_size = 4;
+    add_arg.chain_size = 2;
     add_arg.data_centers.setsize(1);
     add_arg.data_centers[0] = "namecast";
   
