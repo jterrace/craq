@@ -990,6 +990,7 @@ tamed static void process(int fd) {
     int line_len;
     string type;
     string qname;
+    string coralname;
     string qclass;
     string qtype;
     int id;
@@ -1030,6 +1031,7 @@ tamed static void process(int fd) {
       input >> qname;
       // Coral Hack :)
       if (qname.find("nyud.net")!=string::npos) {
+        coralname = string(qname);
         qname = "nyud.net";
       }
 
@@ -1047,6 +1049,7 @@ tamed static void process(int fd) {
       else {
         twait {get_from_cache(qname, mkevent(sd));}
         if (sd != NULL) {
+          if (coralname.size() > 0) qname = coralname;
 	  log_client_request(&cr, sd);
 	  print_request_logs(sd);
 
@@ -1056,7 +1059,7 @@ tamed static void process(int fd) {
 	    vector<record>::iterator it = recs.begin();
 	    while (it != recs.end()) {
 	       out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
-	      sd->storage.fqdn.cstr(), it->type.cstr(),
+	      qname.c_str(), it->type.cstr(),
 	      it->ttl, it->content.cstr()); 
 	      ++it;
 	    }
@@ -1067,7 +1070,7 @@ tamed static void process(int fd) {
 	     if ((rec.type != "A") && 
 	       (qtype == "ANY" || qtype == rec.type.cstr())) {
 	       out << strbuf("DATA\t%s\tIN\t%s\t%i\t-1\t%s\n",
-		sd->storage.fqdn.cstr(), rec.type.cstr(), 
+		qname.c_str(), rec.type.cstr(), 
 		rec.ttl, rec.content.cstr());
 	     }
 	  }

@@ -85,9 +85,9 @@ tamed static void main2() {
   test_key = sd.fqdn;
 
   cout << "Encoded: " << test.len() << " bytes."  << "\n";
-//  twait {
-//    iface.set_key(test_key, test.cstr(), test.len(), mkevent(result)); 
-// }
+  twait {
+    iface.set_key(test_key, test.cstr(), test.len(), mkevent(result)); 
+   }
 
   //twait {
 //    iface.set_key(test_key + "-opt", "", 0, mkevent(result));
