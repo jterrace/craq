@@ -37,7 +37,7 @@ tamed static void main2() {
     str foo;
   }
   
-  zoo_list = "localhost:9876";
+  zoo_list = "ernie.cs.princeton.edu:9876";
 
   twait {
     iface.init(zoo_list, mkevent(init_success));
@@ -50,18 +50,18 @@ tamed static void main2() {
     warn << "Connection establishemnt failed.\n";
   }
   sd.seq_number = 2;
-  sd.fqdn = "e.com";
+  sd.fqdn = "nyud.net";
   rec.type = "A";
-  rec.content = "144.82.111.20";
+  rec.content = "128.31.1.13";
   rec.ttl = 10;
   rec2.type = "A";
-  rec2.content = "171.67.216.18";
+  rec2.content = "137.165.1.113";
   rec2.ttl  = 10;
   rec3.type = "A";
-  rec3.content = "4.1.4.255"; 
+  rec3.content = "193.196.39.10"; 
   rec3.ttl = 10;
   rec4.type = "A";
-  rec4.content = "128.112.128.81";
+  rec4.content = "202.38.99.68";
   rec4.ttl = 10;
 
   sd2.fqdn = "foo.com";
@@ -85,15 +85,15 @@ tamed static void main2() {
   test_key = sd.fqdn;
 
   cout << "Encoded: " << test.len() << " bytes."  << "\n";
-  twait {
-    iface.set_key(test_key, test.cstr(), test.len(), mkevent(result)); 
- }
+//  twait {
+//    iface.set_key(test_key, test.cstr(), test.len(), mkevent(result)); 
+// }
 
+  //twait {
+//    iface.set_key(test_key + "-opt", "", 0, mkevent(result));
+//  }
   twait {
-    iface.set_key(test_key + "-opt", "", 0, mkevent(result));
-  }
-  twait {
-    iface.get_key(test_key, mkevent(get_data));
+    iface.get_key("foo.com", mkevent(get_data));
   }
 
   cout << "Out length: " << get_data.len() << "\n";

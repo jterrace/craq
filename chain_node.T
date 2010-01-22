@@ -822,6 +822,7 @@ tamed void process_propagate(svccb * sbp) {
 	}
 	//Return false if we don't think we should be storing a replica of this key
 	if(!in_succ) {
+                warn << "Rejecting PROPOGATE since not in this datacenter";
 		sbp->replyref(false);
 		return;
 	}
@@ -853,12 +854,15 @@ tamed void process_propagate(svccb * sbp) {
 		}
 		ring_incr(&t);
 	}
-	if(i == chain_info->chain_size-1)
+	if(i == chain_info->chain_size-1) {
+                if (BUG) warn << "I am the tail of this chain\n";
 		wrt.is_tail = true;
+        }
 	if(i == 0)
 		wrt.is_head = true;
 	//Return false if we don't think we should be storing a replica of this key
 	if(!in_succ) {
+                if (BUG) warn << "Not storing data since not in the chain\n";
 		sbp->replyref(false);
 		return;
 	}
@@ -890,6 +894,7 @@ tamed void process_propagate(svccb * sbp) {
 	if(wrt.is_tail &&
 			chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
 		sbp->replyref(true);
+                if (BUG) warn << "Storing this data since I'm the tail, replied.";
 		twait { ack(chain_id, id, mkevent(ret_val)); }
 	} else {
 		sbp->replyref(true);
@@ -1186,20 +1191,22 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 		if( fd<0 ) {
 			report_bad_node(succ);
 			backoff++;
-			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
+			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		}
 
 		if(BUG) warn << "Propagating key of size " << arg.data.size() << "\n";
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
+                        if (BUG) warn << "Error propagating key\n";
 			report_bad_node(succ);
 			backoff++;
-			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
+			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
+                        if (BUG) warn << "Bad return value from propogating key\n";
 			backoff++;
-			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
+			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -1276,7 +1283,7 @@ tamed void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, c
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
+			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		}
 
@@ -1284,7 +1291,7 @@ tamed void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, c
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, 50 * 1000000 * backoff, mkevent ()); }
+			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		}
 
