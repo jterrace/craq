@@ -61,6 +61,9 @@ class SubdomainInfo {
     unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash,
       ClientRegionEqual > rules;
 
+    void get_my_totals(int minutes, 
+      callback<void, vector<pair<record, double> >, double >::ref cb, CLOSURE);
+
     void set_opt_data(struct subdomain_opt sd_opt, 
       callback<void>::ref cb, CLOSURE);
 

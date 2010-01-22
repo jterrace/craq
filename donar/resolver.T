@@ -370,37 +370,28 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
   TRIGGER(cb, sd_opt);
 }
 
-// Take traffic over the last <minutes> minutes, and calculate the
-// expected traffic load on each server given the current routing policy.
-tamed void SubdomainInfo::update_expected_traffic(int minutes,
-    callback<void>::ref cb) {
+// Get the toal traffic this node expects to route to each record
+tamed void SubdomainInfo::get_my_totals(int minutes, callback<void, vector<pair<record, double> >, double>::ref cb) {
   tvars {
-    size_t now;
     client_requests_iter client_it;
-    unordered_map<size_t, unsigned int>* requests;
-    vector<pair<record, double>> to_add;
-    vector<pair<record, double>>::iterator to_add_it;
+    size_t now;
+    vector<pair<record, double> > to_add;
+    vector<pair<record, double> >::iterator to_add_it;
     num_request_iter time_it;
+    unordered_map<size_t, unsigned int>* requests;
+    int i, j;
     rules_iter rules_it;
     client_rule_iter c_rule_it;
-    vector<pair<record, float>> rules;
-    str subdomain_data;
-    struct subdomain_opt sd_opt;
-    int i, j;
-    bool seen;
-    string opt_key, result;
-    struct traffic_entry new_entry;
     vector<record> recs;
+    double my_total;
   }
   client_it = this->num_requests.begin();
   now = time(NULL);
-
+  my_total = 0.0;
   // Populate record list with blanks
   for (i=0; i < this->storage.records.size(); i++) {
     to_add.push_back(pair<record, double> (this->storage.records[i], 0.0));
   }
-
-  // TODO fix N^2 components here
 
   // Iterate through client regions
   while (client_it != this->num_requests.end()) {
@@ -409,20 +400,21 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
     if (rules_it == this->rules.end()) {
       // If we don't have any rules, we must be mapping to closest node
       // so store expected traffic as if mapping to closest node
-      twait{closest_n_records(this, const_cast<ClientRegion*>( 
+      twait{closest_n_records(this, const_cast<ClientRegion*>(
         &(client_it->first)), 1, mkevent(recs));}
       if (recs.size() == 0) {
         client_it++;
         continue;
       }
       time_it = requests->begin();
-      
+
       while (time_it != requests->end()) {
         if (time_it->first > (now - (minutes * 60))) {
           to_add_it = to_add.begin();
           while (to_add_it != to_add.end()) {
             if (recs[0].content == to_add_it->first.content ) {
               to_add_it->second += 1.0 * time_it->second;
+              my_total += 1.0 * time_it->second;
             }
             to_add_it++;
           }
@@ -432,7 +424,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
       client_it++;
       continue;
     }
-    // We have rules for this client...
+    // We have rules for this cleint...
     time_it = requests->begin();
     while(time_it != requests->end()) {
       // Do we consider this time-period?
@@ -445,17 +437,46 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
           while (c_rule_it != rules_it->second.end()) {
            if (c_rule_it->first.content == to_add_it->first.content ) {
               to_add_it->second += c_rule_it->second * time_it->second;
+              my_total += c_rule_it->second * time_it->second;
             }
             c_rule_it++;
           }
           to_add_it++;
-        }  
+        }
       }
       time_it++;
     }
     client_it++;
   }
 
+  TRIGGER(cb, to_add, my_total);
+}
+
+// Take traffic over the last <minutes> minutes, and calculate the
+// expected traffic load on each server given the current routing policy.
+tamed void SubdomainInfo::update_expected_traffic(int minutes,
+    callback<void>::ref cb) {
+  tvars {
+    size_t now;
+    client_requests_iter client_it;
+    unordered_map<size_t, unsigned int>* requests;
+    vector<pair<record, double> > to_add;
+    vector<pair<record, double> >::iterator to_add_it;
+    num_request_iter time_it;
+    rules_iter rules_it;
+    client_rule_iter c_rule_it;
+    vector<pair<record, float>> rules;
+    str subdomain_data;
+    struct subdomain_opt sd_opt;
+    int i, j;
+    bool seen;
+    string opt_key, result;
+    struct traffic_entry new_entry;
+    vector<record> recs;
+    double unused;
+  }
+  
+  twait {this->get_my_totals(minutes, mkevent(to_add, unused));}
   twait{this->get_opt_data(mkevent(sd_opt)); }
   
   to_add_it = to_add.begin();
@@ -571,6 +592,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     float distance_norm;
     int problem_size, temp_index;
     vector<double> temp_row;
+    vector<pair<record, double> > unused;
     double* solution;
     unordered_map<ClientRegion, vector<pair<record, float> >, 
 	ClientRegionHash, ClientRegionEqual > new_rules;
@@ -589,12 +611,20 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   }
 
   // Get optimization parameters
-  twait{ this->get_opt_data(mkevent(sd_opt)); }
+  twait { this->get_opt_data(mkevent(sd_opt)); }
 
   // Get global data
   twait { this->get_traffic_totals(sd_opt, 
    false, mkevent(totals, total_traffic)); }  
 
+  // Find my proportion
+  twait{ this->get_my_totals(10, mkevent(unused, temp)); }
+  if (DEBUG) cout << "My total: " << temp << " Other total " << total_traffic
+    << "\n";
+  S_n = temp / (total_traffic + temp);
+  if (DEBUG) cout << "Using S_n " << S_n << "\n";
+
+  S_n = 1.0;
   // Get client request data
   props = this->get_client_props(10);
   it = props.begin();
@@ -620,8 +650,6 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   r = MSK_putmaxnumvar(task, problem_size);
   r = MSK_putmaxnumcon(task, num_clients);
   r = MSK_putmaxnumanz(task, problem_size);
-
-  S_n = 1.0;
   
   for (i=0; i < num_servers; i++) {
     for (j=0; j < num_clients; j++) {
