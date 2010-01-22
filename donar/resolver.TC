@@ -45,7 +45,6 @@ str zoo_list;
 ofstream logfile;
 bool debug;
 
-#define MAX_CACHE_PERIOD 10
 #define LOG_EXPIRY_MINUTES 15
 #define LOG_CLEAN_INTERVAL_MINS 15
 #define MAX_A_RECORDS 1
@@ -59,6 +58,7 @@ Connection* donar_conn;
 craq_interface craq;
 unsigned int my_ip_addr;
 unsigned int update_interval;
+unsigned int max_cache_period;
 
 string last; // PDNS hack
 
@@ -1203,7 +1203,7 @@ craq.get_key(fqdn, mkevent(subdomain_data));
   }
 
   // If data stored, test if it's expired
-  if (time(NULL) > (subdomain_cache_it->validated + MAX_CACHE_PERIOD)) {
+  if (time(NULL) > (subdomain_cache_it->validated + max_cache_period)) {
     
 # 989 "resolver.T"
   do {     do {       closure_wrapper<get_from_cache__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 989);     __cls->set_jumpto (2); 
@@ -1507,6 +1507,8 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
   ct.add("MosekKeyFile", &mosek_file);
   ct.insert(New conftab_bool ("ShowDebug", &debug, true));
   ct.insert(New conftab_int<unsigned int>
+      ("MaxCacheSeconds", &max_cache_period, 0, 300, 10));
+  ct.insert(New conftab_int<unsigned int>
       ("UpdateInterval", &update_interval, 0, 10000, 500));
 
   line = 0;
@@ -1542,26 +1544,26 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
 
   // Temporary debug
   
-# 1260 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1260);     __cls->set_jumpto (1); 
-# 1260 "resolver.T"
+# 1262 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1262);     __cls->set_jumpto (1); 
+# 1262 "resolver.T"
  client_debug(mkevent()); 
-# 1260 "resolver.T"
+# 1262 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_1:       ;   } while (0);
-# 1260 "resolver.T"
+# 1262 "resolver.T"
 
 
   // Setup craq connection
   
-# 1263 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1263);     __cls->set_jumpto (2); 
-# 1263 "resolver.T"
+# 1265 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1265);     __cls->set_jumpto (2); 
+# 1265 "resolver.T"
 
     craq.init(string(zoo_list.cstr()), mkevent(init_success));
   
-# 1265 "resolver.T"
+# 1267 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_2:       ;   } while (0);
-# 1265 "resolver.T"
+# 1267 "resolver.T"
 
   logfile << "Using IP Address: " << craq.my_ip_addr.c_str();
   inet_aton(craq.my_ip_addr.c_str(), &addr);
@@ -1576,9 +1578,9 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
   }
   
   listen_loop();
-# 1279 "resolver.T"
-  do {   __cls->end_of_scope_checks (1279);   return;   } while (0);
-# 1279 "resolver.T"
+# 1281 "resolver.T"
+  do {   __cls->end_of_scope_checks (1281);   return;   } while (0);
+# 1281 "resolver.T"
 }
 
 int main (int argc, char* argv[]) {

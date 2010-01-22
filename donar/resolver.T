@@ -43,7 +43,6 @@ str zoo_list;
 ofstream logfile;
 bool debug;
 
-#define MAX_CACHE_PERIOD 10
 #define LOG_EXPIRY_MINUTES 15
 #define LOG_CLEAN_INTERVAL_MINS 15
 #define MAX_A_RECORDS 1
@@ -57,6 +56,7 @@ Connection* donar_conn;
 craq_interface craq;
 unsigned int my_ip_addr;
 unsigned int update_interval;
+unsigned int max_cache_period;
 
 string last; // PDNS hack
 
@@ -988,7 +988,7 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
   }
 
   // If data stored, test if it's expired
-  if (time(NULL) > (subdomain_cache_it->validated + MAX_CACHE_PERIOD)) {
+  if (time(NULL) > (subdomain_cache_it->validated + max_cache_period)) {
     twait {craq.get_key(fqdn, mkevent(subdomain_data));}
     str2xdr(sd, subdomain_data);
     if (sd.seq_number > subdomain_cache_it->storage.seq_number) {
@@ -1225,6 +1225,8 @@ tamed static void main2(int argc, char** argv) {
   ct.add("SockPath", &sock_path);
   ct.add("MosekKeyFile", &mosek_file);
   ct.insert(New conftab_bool ("ShowDebug", &debug, true));
+  ct.insert(New conftab_int<unsigned int>
+      ("MaxCacheSeconds", &max_cache_period, 0, 300, 10));
   ct.insert(New conftab_int<unsigned int>
       ("UpdateInterval", &update_interval, 0, 10000, 500));
 

@@ -49,31 +49,44 @@ tamed static void main2() {
   else {
     warn << "Connection establishemnt failed.\n";
   }
-  sd.seq_number = 2;
-  sd.fqdn = "patrick.com";
+  sd.seq_number = 3;
+  sd.fqdn = "nyud.net";
+
   rec.type = "A";
-  rec.content = "128.31.1.13";
+  rec.content = "140.247.60.126"; // righthand.eecs.harvard.edu
   rec.ttl = 10;
-  rec2.type = "A";
-  rec2.content = "137.165.1.113";
-  rec2.ttl  = 10;
-  rec3.type = "A";
-  rec3.content = "193.196.39.10"; 
-  rec3.ttl = 10;
-  rec4.type = "A";
-  rec4.content = "202.38.99.68";
-  rec4.ttl = 10;
+  sd.records.push_back(rec);
+
+  rec.content = "134.121.64.4"; // planetlab1.eecs.wsu.edu
+  rec.ttl  = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "213.131.1.101"; // plab-1.sinp.msu.ru
+  rec.ttl  = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "129.97.74.12"; // plink.cs.uwaterloo.ca
+  rec.ttl = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "193.196.39.10"; // iraplab2.iralab.uni-karlsruhe.de
+  rec.ttl = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "202.38.99.68"; // pl1.6test.edu.cn
+  rec.ttl = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
 
   sd2.fqdn = "foo.com";
   rec5.content = "1.2.3.4";
   rec5.type = "A";
   rec5.ttl = 1000;
   sd2.records.push_back(rec5);
-
-  sd.records.push_back(rec);
-  sd.records.push_back(rec2);
-  sd.records.push_back(rec3);
-  sd.records.push_back(rec4);
 
   foo = xdr2str (sd2, false);
   twait {
