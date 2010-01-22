@@ -89,9 +89,9 @@ tamed static void main2() {
     iface.set_key(test_key, test.cstr(), test.len(), mkevent(result)); 
    }
 
-  //twait {
-//    iface.set_key(test_key + "-opt", "", 0, mkevent(result));
-//  }
+  twait {
+    iface.set_key(test_key + "-opt", "", 0, mkevent(result));
+  }
   twait {
     iface.get_key("foo.com", mkevent(get_data));
   }

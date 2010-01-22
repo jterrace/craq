@@ -551,6 +551,7 @@ tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
       memcpy(&temp, &sd_opt.records[i].entries[j].traffic_vol, sizeof(double));
       instance_total += temp;
+      if (DEBUG) cout << "Adding: " << temp << "\n";
       if (include_me ||
         (sd_opt.records[i].entries[j].server_id != my_ip_addr)) {
         other_instance_total += temp;
@@ -720,6 +721,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   cout << "Pre-Optimization Status: ";
   if (trmcode == MSK_RES_OK) cout << "OK\n";
   else { cout << trmcode; }
+
+  fflush(stdout);
   MSK_writedata(task, "dump.txt");
   r = MSK_optimizetrm(task, &trmcode);
 
