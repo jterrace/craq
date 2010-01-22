@@ -40,7 +40,9 @@ str mysql_user;
 str mysql_pass;
 str mysql_host;
 str zoo_list;
-#define DEBUG 1
+ofstream logfile;
+bool debug;
+
 #define MAX_CACHE_PERIOD 10
 #define LOG_EXPIRY_MINUTES 15
 #define LOG_CLEAN_INTERVAL_MINS 15
@@ -150,7 +152,7 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     int lon_d_rounded;
     struct in_addr addr;
   }
-  if (DEBUG) {
+  if (debug) {
     cout << "Quova lookup requested for " << ip << endl;
     fflush(stdout);
   }
@@ -189,7 +191,7 @@ tamed static void get_client_region(string ip, cb_cr cb) {
   
   location_cache.insert(pair<unsigned long, ClientRegion>(addr.s_addr, out));
   
-  if (DEBUG) {
+  if (debug) {
     cout << "Returning client region from quova lookup: " <<  out << endl;
     fflush(stdout);
   }
@@ -285,7 +287,7 @@ size_t t = time(NULL);
     existing_map->insert(pair<size_t, unsigned int>(t, 1));
   }
   else {
-    cout << "Updating Value\n";
+    if (debug) cout << "Updating Value\n";
     unsigned int value = t_it->second;
     existing_map->erase(t);
     existing_map->insert(pair<size_t, unsigned int>(t, value + 1));
@@ -303,7 +305,7 @@ tamed void SubdomainInfo::set_opt_data(struct subdomain_opt sd_opt,
   subdomain_data = xdr2str(sd_opt);
   opt_key = this->storage.fqdn.cstr();
   opt_key += "-opt";
-  if (DEBUG) cout << "Updating optimization values for " << opt_key;
+  if (debug) cout << "Updating optimization values for " << opt_key;
   twait {craq.set_key(opt_key, subdomain_data.cstr(), subdomain_data.len(),
     mkevent(result));}
   TRIGGER(cb);
@@ -331,8 +333,8 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
   if (subdomain_data.len() < 20 || 
        (sd_opt.records.size() != this->storage.records.size()) ||
        (sd_opt.seq_number < this->storage.seq_number)) {
-      cout << "CRAQ does not have updated optimization info for \n" << 
-        this->storage.fqdn.cstr();
+      if (debug) cout << "CRAQ does not have updated optimization info for \n" 
+        << this->storage.fqdn.cstr();
 
       // Add new entries for existing records
       sd_opt.seq_number = this->storage.seq_number;
@@ -359,8 +361,8 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
         memcpy(&new_rec_opt.lambda, &lambda, sizeof(new_rec_opt.lambda));
 
         sd_opt.records.push_back(new_rec_opt);
-        cout << sd_opt.records.size();
-        cout << this->storage.records.size();
+        if (debug) cout << sd_opt.records.size();
+        if (debug) cout << this->storage.records.size();
       }
   }
   if (this->storage.records.size() != sd_opt.records.size()) {
@@ -512,7 +514,7 @@ tamed void SubdomainInfo::update_expected_traffic(int minutes,
 
   // Print out totals
   to_add_it = to_add.begin();
-  if (DEBUG) {
+  if (debug) {
     cout << "Totals\n:";
     while (to_add_it != to_add.end()) {
       cout << to_add_it->first.content;
@@ -551,14 +553,14 @@ tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
     for (j=0; j < sd_opt.records[i].entries.size(); j++) {
       memcpy(&temp, &sd_opt.records[i].entries[j].traffic_vol, sizeof(double));
       instance_total += temp;
-      if (DEBUG) cout << "Adding: " << temp << "\n";
+      if (debug) cout << "Adding: " << temp << "\n";
       if (include_me ||
         (sd_opt.records[i].entries[j].server_id != my_ip_addr)) {
         other_instance_total += temp;
       }
     }
     subdomain_total += instance_total;
-    if (DEBUG) {
+    if (debug) {
       cout << "Adding the total for record: " << 
         sd_opt.records[i].content.cstr() << " " << other_instance_total << "\n";
     }
@@ -566,7 +568,7 @@ tamed void SubdomainInfo::get_traffic_totals(struct subdomain_opt sd_opt,
     out.insert(pair <string, double> (
       string(sd_opt.records[i].content.cstr()), other_instance_total));
   }
-  if (DEBUG) cout << "Total traffic was " << subdomain_total;
+  if (debug) cout << "Total traffic was " << subdomain_total;
   TRIGGER(cb, out, subdomain_total);
 }
 
@@ -620,27 +622,31 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   // Find my proportion
   twait{ this->get_my_totals(10, mkevent(unused, temp)); }
-  if (DEBUG) cout << "My total: " << temp << " Other total " << total_traffic
+  if (debug) cout << "My total: " << temp << " Other total " << total_traffic
     << "\n";
   S_n = temp / (total_traffic + temp);
-  if (DEBUG) cout << "Using S_n " << S_n << "\n";
+  if (debug) cout << "Using S_n " << S_n << "\n";
 
   S_n = 1.0;
   // Get client request data
   props = this->get_client_props(10);
   it = props.begin();
   
-  cout << "Calculating optimal policy for " << this->storage.fqdn << "\n";
+  if (debug) cout << "Calculating optimal policy for " << 
+    this->storage.fqdn << "\n";
   num_clients = props.size();
   num_servers = this->storage.records.size();
   problem_size = num_clients * num_servers;
 
   // Make sure we have enough records in opt
-  cout << sd_opt.records.size();
-  cout << this->storage.records.size();
 
-  cout << "Number of clients: " << num_clients;
-  cout << " Number of servers: " << num_servers;
+  if (debug) {
+    cout << sd_opt.records.size();
+    cout << this->storage.records.size();
+
+    cout << "Number of clients: " << num_clients;
+    cout << " Number of servers: " << num_servers;
+  }
 
   r = MSK_makeenv(&env, NULL, NULL, NULL, NULL);
   r = MSK_initenv(env);
@@ -699,18 +705,21 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       
       totals_it = totals.find(this->storage.records[j].content.cstr());
       if (totals_it == totals.end()) {
-        cout << "No record data for " << 
+        if (debug) cout << "No record data for " << 
          this->storage.records[j].content.cstr();
         exit(1);
       }
 
       P_other = totals_it->second / total_traffic;
-      if (total_traffic == 0.0) P_other = 0.0;
+      // Allow some FP errors
+      if ((total_traffic > -.1) && (total_traffic < .1)) P_other = 0.0;
 
       // Add S_n * 2 * alpha_c * (P_other - w) * lambda
       memcpy(&proportion, &sd_opt.records[j].proportion, sizeof(double));
       memcpy(&lambda, &sd_opt.records[j].lambda, sizeof(double));
 
+      if (debug) cout << "Lambda: " << lambda << " P_other: " << P_other
+        << " Proportion: " << proportion << endl;
       temp+= S_n * 2 * (P_other - proportion) * lambda;
       MSK_putcj(task, i * num_servers + j, temp);
     }
@@ -718,34 +727,32 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   r = MSK_putobjsense(task, MSK_OBJECTIVE_SENSE_MINIMIZE);
 
-  cout << "Pre-Optimization Status: ";
-  if (trmcode == MSK_RES_OK) cout << "OK\n";
-  else { cout << trmcode; }
-
-  fflush(stdout);
-  MSK_writedata(task, "dump.txt");
   r = MSK_optimizetrm(task, &trmcode);
 
-  cout << "After optimization";
-  if (trmcode == MSK_RES_OK) cout << "OK\n";
-  else { cout << trmcode; }
+  if (debug) {
+    cout << "After optimization";
+    if (trmcode == MSK_RES_OK) cout << "OK\n";
+    else { cout << trmcode; }
+  }
 
   MSK_solutionsummary (task, MSK_STREAM_ERR);
   MSK_getsolutionstatus (task, MSK_SOL_ITR, NULL, &solsta);
   if (solsta == MSK_SOL_STA_OPTIMAL || solsta == MSK_SOL_STA_NEAR_OPTIMAL) {
-    cout << "At optimal point\n";
+    if (debug) cout << "At optimal point\n";
   }
   else {
-    cout << "NOT Optimal ";
-    printf("%i\n", solsta);
+    if (debug) cout << "NOT Optimal ";
+    if (debug) printf("%i\n", solsta);
   }
 
   result = new double[problem_size];
   MSK_getsolutionslice(task, MSK_SOL_ITR, MSK_SOL_ITEM_XX, 0, problem_size,
     result);
-  for  (i = 0; i < problem_size; i++) {
-    cout << result[i];
-    cout << endl;
+  if (debug) {
+    for (i = 0; i < problem_size; i++) {
+      cout << result[i];
+      cout << endl;
+    }
   }
   // Populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
@@ -764,24 +771,24 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   twait { this->get_opt_data(mkevent(sd_opt)); }
 
-/*
+
   update_prob = 1.0 / craq.number_of_nodes();
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
     return;
   }
-*/
+
   // Update optimization paramters (we could do this more efficiently)
 
   twait { this->get_traffic_totals(sd_opt, true, 
     mkevent(totals, total_traffic)); }
 
   // We can't do anything useful if there is no traffic right now
-  if (total_traffic == 0.0) {
+  if (total_traffic < 0.1) {
     TRIGGER(cb);
     return;
   }
-  if (DEBUG) cout << "Total traffic: " << total_traffic;
+  if (debug) cout << "Total traffic: " << total_traffic;
 
   for (int i = 0; i < num_servers; i++) {
     totals_it = totals.find(this->storage.records[i].content.cstr());
@@ -791,7 +798,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     memcpy(&epsilon, &sd_opt.records[i].epsilon, sizeof(double));    
     diff = ((P_i - proportion) * (P_i - proportion)) - (epsilon * epsilon);
 
-    if (DEBUG) {
+    if (debug) {
       cout << "True proportion was " << P_i << " while requested was " <<
         proportion << endl;
       cout << " diff^2: " << (diff * diff) << " exceeded epsilon^2: " << 
@@ -800,7 +807,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
     memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));      
 
-    if (DEBUG) {
+    if (debug) {
       cout << "Updating lambda_i for instance " << 
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
@@ -808,7 +815,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
 
     if (lambda < 0.0) continue;
-    if (DEBUG) cout << "New value " << lambda << "\n";
+    if (debug) cout << "New value " << lambda << "\n";
 	   
     memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
   }
@@ -827,15 +834,14 @@ tamed void client_debug(callback<void>::ref cb) {
   TRIGGER(cb);
   next_update_interval = (rand() % update_interval) + 1;
   while (true) {
-    if (DEBUG) 
+    if (debug) 
       cout << "Delaying optimization " << next_update_interval << " seconds\n";
     twait { delaycb(next_update_interval, 0, mkevent()); }
     subdomain_cache_it = subdomain_cache.begin();
-    cout << "Running optimization\n\n";
+    if (debug) cout << "Running optimization\n\n";
     while (subdomain_cache_it != subdomain_cache.end()) {
       sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
-      cout <<  sd->storage.fqdn.cstr();
-      cout << "\n";
+      if (debug) cout <<  sd->storage.fqdn.cstr();
       // Calculate optimal routes based on external traffic
       twait{ sd->calculate_optimal_routes(mkevent()); }
       //twait {sd->update_expected_traffic(10, mkevent());}
@@ -879,9 +885,11 @@ vector<pair<ClientRegion, float> >
   vector<pair<ClientRegion, unsigned int> >::iterator totals_it =
     totals.begin();
   while (totals_it != totals.end()) {
-    cout << "Adding region (" << totals_it->first.lat << ", ";
-    cout << totals_it->first.lon << ") ";
-    cout << "Total traffic for this region " << totals_it->second << "\n";
+    if (debug) {
+      cout << "Adding region (" << totals_it->first.lat << ", ";
+      cout << totals_it->first.lon << ") ";
+      cout << "Total traffic for this region " << totals_it->second << "\n";
+    }
     out.push_back(pair<ClientRegion, float> 
       (totals_it->first, (float) totals_it->second / total_volume));
     totals_it++;
@@ -942,7 +950,7 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     subdomain sd;
   }
   to_find.storage.fqdn = str(fqdn.c_str());
-  if (DEBUG) {
+  if (debug) {
     cout << "Cache request for " << fqdn << endl;
     fflush(stdout);
   }
@@ -950,24 +958,27 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
   
   // No data stored for this record
   if (subdomain_cache_it == subdomain_cache.end()) {
-    cout << "Getting key";
+    
+    if (debug) cout << "Getting key";
     fflush(stdout);
     twait {craq.get_key(fqdn, mkevent(subdomain_data));}
     if (subdomain_data.len() < 20) {
-      cout << "CRAQ did not have data for this record\n";
+      if (debug) cout << "CRAQ did not have data for this record\n";
       TRIGGER(cb, NULL);
       return;
     }
 
-    cout << "Got value of size " << subdomain_data.len();
-    cout << subdomain_data;
-    fflush(stdout);
+    if (debug) {
+      cout << "Got value of size " << subdomain_data.len();
+      cout << subdomain_data;
+      fflush(stdout);
+    }
     str2xdr(sd, subdomain_data);
 
     to_insert.storage = sd;
     to_insert.validated = time(NULL);
     subdomain_cache.insert(to_insert);
-    if (DEBUG) {
+    if (debug) {
       cout << "Inserting record into cache from CRAQ";
       fflush(stdout);
     }
@@ -987,7 +998,7 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
       to_insert.num_requests = subdomain_cache_it->num_requests;
       subdomain_cache.erase(subdomain_cache_it);
       subdomain_cache.insert(to_insert);
-      if (DEBUG) {
+      if (debug) {
         cout << "Sequence number too low, updating record";
         cout << "New data length: " << subdomain_data.len();
         fflush(stdout);
@@ -1003,7 +1014,7 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     // different
   }
 
-  if (DEBUG) {
+  if (debug) {
     cout << "Answering for " << fqdn << " from cache.\n";
     fflush(stdout);
   }
@@ -1057,6 +1068,8 @@ tamed static void process(int fd) {
       }
     }
     else {
+      cout << time(NULL) << ": ";
+      cout << str(resp).cstr() << endl;
       input.str(str(resp).cstr());
       input >> type;
       input >> qname;
@@ -1082,7 +1095,7 @@ tamed static void process(int fd) {
         if (sd != NULL) {
           if (coralname.size() > 0) qname = coralname;
 	  log_client_request(&cr, sd);
-	  print_request_logs(sd);
+	  if (debug) print_request_logs(sd);
 
 	  // Get A Records according to optimal policy
 	  if (qtype == "A" || qtype == "ANY") {
@@ -1108,12 +1121,14 @@ tamed static void process(int fd) {
 	  last = string(str(out).cstr());
         }
       }
+      cout << time(NULL) << ": ";
+      cout << str(out).cstr();
       out << "END\n";    
     }
     twait{ tame:: waitwrite (fd, mkevent()); }
     if ( out.tosuio()->output(fd) < 0) {
       close(fd);
-      if (DEBUG) cout << "Error writing to socket, closing";
+      if (debug) cout << "Error writing to socket, closing";
       break;
     }
     out.tosuio()->rembytes(out.tosuio()->linelen());
@@ -1156,7 +1171,7 @@ tamed static void listen_loop() {
   while (true) {
       tame::waitread(s, mkevent(G, READ));
       int n;
-      if (DEBUG) cout << "Waiting for a connection...\n";
+      if (debug) cout << "Waiting for a connection...\n";
       twait (G, which);
 
       switch (which) {
@@ -1167,7 +1182,7 @@ tamed static void listen_loop() {
 	    perror("accept");
 	    exit(1);
           }
-          if (DEBUG) cout << "Connected.\n";
+          if (debug) cout << "Connected.\n";
           process(fd);
           break;
 	default:
@@ -1179,7 +1194,6 @@ tamed static void listen_loop() {
 
 tamed static void main2(int argc, char** argv) {
   tvars {
-    ofstream logfile;
     Driver *driver;
     Statement *quova_stmt;
     bool init_success;
@@ -1210,6 +1224,7 @@ tamed static void main2(int argc, char** argv) {
   ct.add("ZooList", &zoo_list);
   ct.add("SockPath", &sock_path);
   ct.add("MosekKeyFile", &mosek_file);
+  ct.insert(New conftab_bool ("ShowDebug", &debug, true));
   ct.insert(New conftab_int<unsigned int>
       ("UpdateInterval", &update_interval, 0, 10000, 500));
 
@@ -1221,7 +1236,7 @@ tamed static void main2(int argc, char** argv) {
   }
   // Open log file
   logfile.open("/var/log/donar", ios::out | ios::app);
-  logfile << "Test";
+  logfile << "DONAR LOG\n";
 
 /* NOT WORKING RIGHT NOW
   // Set mosek env variable
@@ -1251,15 +1266,15 @@ tamed static void main2(int argc, char** argv) {
   twait {
     craq.init(string(zoo_list.cstr()), mkevent(init_success));
   }
-
+  logfile << "Using IP Address: " << craq.my_ip_addr.c_str();
   inet_aton(craq.my_ip_addr.c_str(), &addr);
   my_ip_addr = (unsigned int) addr.s_addr;
 
   if (init_success) {
-    if (DEBUG) cout << "Connection established.\n";
+    if (debug) cout << "Connection established.\n";
   }
   else {
-    if (DEBUG) cout << "Connection establishemnt failed.\n";
+    if (debug) cout << "Connection establishemnt failed.\n";
     exit(-1);
   }
   
