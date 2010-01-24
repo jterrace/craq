@@ -778,6 +778,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     return;
   }
 
+  TRIGGER(cb);
   return;
 
   // Update optimization paramters
