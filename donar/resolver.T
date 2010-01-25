@@ -743,6 +743,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   else {
     if (debug) cout << "NOT Optimal ";
     if (debug) printf("%i\n", solsta);
+    TRIGGER(cb);
+    return;
   }
 
   result = new double[problem_size];
@@ -754,16 +756,22 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       cout << endl;
     }
   }
+  cout << time(NULL);
+  cout << ": Policy update ";
   // Populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
         (this->storage.records[j], result[i * num_servers + j]));
+      cout << this->storage.records[j].content;
+      cout << " " << result[i * num_servers + j];
     }
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
   }
+  cout << endl;
+  fflush(stdout);
   this->rules = new_rules;
 
   // Store expected traffic given this new policy
@@ -1072,7 +1080,7 @@ tamed static void process(int fd) {
     }
     else {
       cout << time(NULL) << ": ";
-      cout << str(resp).cstr() << endl;
+      cout << str(resp).cstr() << " ";
       input.str(str(resp).cstr());
       input >> type;
       input >> qname;
@@ -1089,7 +1097,7 @@ tamed static void process(int fd) {
       //out << id;
     
       twait {get_client_region(remote_ip, mkevent(cr));}
-
+      cout << cr.lat << "," << cr.lon << endl;
       if (type == "AXFR") {
         out << strbuf("%s", last.c_str());
       }

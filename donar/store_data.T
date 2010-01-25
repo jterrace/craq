@@ -37,7 +37,7 @@ tamed static void main2() {
     str foo;
   }
   
-  zoo_list = "ernie.cs.princeton.edu:9876";
+  zoo_list = "localhost:9876";
 
   twait {
     iface.init(zoo_list, mkevent(init_success));
