@@ -765,7 +765,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       client_rules.push_back(pair<record, float> 
         (this->storage.records[j], result[i * num_servers + j]));
       cout << this->storage.records[j].content;
-      cout << " " << result[i * num_servers + j];
+      cout << " " << result[i * num_servers + j] << " ";
     }
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
