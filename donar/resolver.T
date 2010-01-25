@@ -741,7 +741,8 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     if (debug) cout << "At optimal point\n";
   }
   else {
-    if (debug) cout << "NOT Optimal ";
+    cout << "NOT Optimal for :" << sd_opt.fqdn.cstr() << endl;
+    fflush(stdout);
     if (debug) printf("%i\n", solsta);
     TRIGGER(cb);
     return;
@@ -1103,6 +1104,9 @@ tamed static void process(int fd) {
       if (type == "AXFR") {
         out << strbuf("%s", last.c_str());
       }
+      else if (qname == "IN" || qname == "ANY" || qname == "SOA" || qname == "CNAME") {
+        out << strbuf("%s", last.c_str());
+      } 
       else {
         twait {get_from_cache(qname, mkevent(sd));}
         if (sd != NULL) {

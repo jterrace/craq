@@ -846,13 +846,14 @@ get_client_region(
     if (debug) cout << "At optimal point\n";
   }
   else {
-    if (debug) cout << "NOT Optimal ";
+    cout << "NOT Optimal for :" << sd_opt.fqdn.cstr() << endl;
+    fflush(stdout);
     if (debug) printf("%i\n", solsta);
     TRIGGER(cb);
     
-# 744 "resolver.T"
-  do { __cls->end_of_scope_checks (744);
-# 744 "resolver.T"
+# 745 "resolver.T"
+  do { __cls->end_of_scope_checks (745);
+# 745 "resolver.T"
     return ;  } while (0);
   }
 
@@ -866,11 +867,11 @@ get_client_region(
     }
   }
   cout << time(NULL);
-  cout << ": Policy update";
+  cout << ": Policy update ";
   // Populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
-    cout << "(" << props[i].first.lat << ", " << props[i].first.lon << ") <";
+    cout << "(" << props[i].first.lat << ", " << props[i].first.lon << ") < ";
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
         (this->storage.records[j], result[i * num_servers + j]));
@@ -887,23 +888,23 @@ get_client_region(
 
   // Store expected traffic given this new policy
   
-# 777 "resolver.T"
-  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (5, 777);     __cls->set_jumpto (5); 
-# 777 "resolver.T"
+# 778 "resolver.T"
+  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (5, 778);     __cls->set_jumpto (5); 
+# 778 "resolver.T"
 this->update_expected_traffic(10, mkevent());
-# 777 "resolver.T"
+# 778 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  SubdomainInfo__calculate_optimal_routes__label_5:       ;   } while (0);
-# 777 "resolver.T"
+# 778 "resolver.T"
 
 
   
-# 779 "resolver.T"
-  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (6, 779);     __cls->set_jumpto (6); 
-# 779 "resolver.T"
+# 780 "resolver.T"
+  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (6, 780);     __cls->set_jumpto (6); 
+# 780 "resolver.T"
  this->get_opt_data(mkevent(sd_opt)); 
-# 779 "resolver.T"
+# 780 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  SubdomainInfo__calculate_optimal_routes__label_6:       ;   } while (0);
-# 779 "resolver.T"
+# 780 "resolver.T"
 
 
 
@@ -911,39 +912,39 @@ this->update_expected_traffic(10, mkevent());
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
     
-# 785 "resolver.T"
-  do { __cls->end_of_scope_checks (785);
-# 785 "resolver.T"
+# 786 "resolver.T"
+  do { __cls->end_of_scope_checks (786);
+# 786 "resolver.T"
     return ;  } while (0);
   }
 
   TRIGGER(cb);
   
-# 789 "resolver.T"
-  do { __cls->end_of_scope_checks (789);
-# 789 "resolver.T"
+# 790 "resolver.T"
+  do { __cls->end_of_scope_checks (790);
+# 790 "resolver.T"
     return ;  } while (0);
 
   // Update optimization paramters
 
   
-# 793 "resolver.T"
-  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (7, 793);     __cls->set_jumpto (7); 
-# 793 "resolver.T"
+# 794 "resolver.T"
+  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (7, 794);     __cls->set_jumpto (7); 
+# 794 "resolver.T"
  this->get_traffic_totals(sd_opt, true, 
     mkevent(totals, total_traffic)); 
-# 794 "resolver.T"
+# 795 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  SubdomainInfo__calculate_optimal_routes__label_7:       ;   } while (0);
-# 794 "resolver.T"
+# 795 "resolver.T"
 
 
   // We can't do anything useful if there is no traffic right now
   if (total_traffic < 0.1) {
     TRIGGER(cb);
     
-# 799 "resolver.T"
-  do { __cls->end_of_scope_checks (799);
-# 799 "resolver.T"
+# 800 "resolver.T"
+  do { __cls->end_of_scope_checks (800);
+# 800 "resolver.T"
     return ;  } while (0);
   }
   if (debug) cout << "Total traffic: " << total_traffic;
@@ -979,34 +980,34 @@ this->update_expected_traffic(10, mkevent());
   }
 
   
-# 833 "resolver.T"
-  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (8, 833);     __cls->set_jumpto (8); 
-# 833 "resolver.T"
+# 834 "resolver.T"
+  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (8, 834);     __cls->set_jumpto (8); 
+# 834 "resolver.T"
  this->set_opt_data(sd_opt, mkevent()); 
-# 833 "resolver.T"
+# 834 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  SubdomainInfo__calculate_optimal_routes__label_8:       ;   } while (0);
-# 833 "resolver.T"
+# 834 "resolver.T"
 
 
   TRIGGER(cb);
-# 836 "resolver.T"
-  do {   __cls->end_of_scope_checks (836);   return;   } while (0);
-# 836 "resolver.T"
+# 837 "resolver.T"
+  do {   __cls->end_of_scope_checks (837);   return;   } while (0);
+# 837 "resolver.T"
 }
 
 void client_debug(callback<void>::ref cb, CLOSURE);
-# 839 "resolver.T"
+# 840 "resolver.T"
 class client_debug__closure_t : public closure_t { public:   client_debug__closure_t ( callback< void >::ref cb) : closure_t ("resolver.T", "client_debug"),  _stack (cb), _args (cb) {}   void reenter ()   {     client_debug (_args.cb, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( callback< void >::ref cb) {}      SubdomainInfo *sd;      unsigned int next_update_interval;   };   struct args_t {     args_t ( callback< void >::ref cb) : cb (cb) {}      callback< void >::ref cb;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 839 "resolver.T"
+# 840 "resolver.T"
 void 
 client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
 {
-# 839 "resolver.T"
+# 840 "resolver.T"
 
   
-# 840 "resolver.T"
+# 841 "resolver.T"
   client_debug__closure_t *__cls;   ptr<client_debug__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<client_debug__closure_t> (__tame_cb);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<client_debug__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    SubdomainInfo *&sd = __cls->_stack.sd;    unsigned int &next_update_interval = __cls->_stack.next_update_interval;    callback< void >::ref &cb = __cls->_args.cb;    use_reference (cb);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto client_debug__label_1;     break;   case 2:     goto client_debug__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 843 "resolver.T"
+# 844 "resolver.T"
 
   TRIGGER(cb);
   next_update_interval = (rand() % update_interval) + 1;
@@ -1014,13 +1015,13 @@ client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
     if (debug) 
       cout << "Delaying optimization " << next_update_interval << " seconds\n";
     
-# 849 "resolver.T"
-  do {     do {       closure_wrapper<client_debug__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 849);     __cls->set_jumpto (1); 
-# 849 "resolver.T"
+# 850 "resolver.T"
+  do {     do {       closure_wrapper<client_debug__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 850);     __cls->set_jumpto (1); 
+# 850 "resolver.T"
  delaycb(next_update_interval, 0, mkevent()); 
-# 849 "resolver.T"
+# 850 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  client_debug__label_1:       ;   } while (0);
-# 849 "resolver.T"
+# 850 "resolver.T"
 
     subdomain_cache_it = subdomain_cache.begin();
     if (debug) cout << "Running optimization\n\n";
@@ -1029,13 +1030,13 @@ client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
       if (debug) cout <<  sd->storage.fqdn.cstr();
       // Calculate optimal routes based on external traffic
       
-# 856 "resolver.T"
-  do {     do {       closure_wrapper<client_debug__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 856);     __cls->set_jumpto (2); 
-# 856 "resolver.T"
+# 857 "resolver.T"
+  do {     do {       closure_wrapper<client_debug__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 857);     __cls->set_jumpto (2); 
+# 857 "resolver.T"
  sd->calculate_optimal_routes(mkevent()); 
-# 856 "resolver.T"
+# 857 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  client_debug__label_2:       ;   } while (0);
-# 856 "resolver.T"
+# 857 "resolver.T"
 
       //twait {sd->update_expected_traffic(10, mkevent());}
       subdomain_cache_it++;
@@ -1043,9 +1044,9 @@ client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
     next_update_interval = (update_interval - next_update_interval) + 
                            (rand() % update_interval + 1);
   }
-# 863 "resolver.T"
-  do {   __cls->end_of_scope_checks (863);   return;   } while (0);
-# 863 "resolver.T"
+# 864 "resolver.T"
+  do {   __cls->end_of_scope_checks (864);   return;   } while (0);
+# 864 "resolver.T"
 }
 
 
@@ -1097,20 +1098,20 @@ vector<pair<ClientRegion, float> >
 // Return a subset of the A records for SubdomainInfo as determined
 // by optimal mapping policy. If policy not yet in place, default
 // policy is to return nereast three records.
-# 914 "resolver.T"
+# 915 "resolver.T"
 static void  get_a_records( SubdomainInfo *sd,  ClientRegion *cr,  callback< void  ,  vector< record > >::ref cb, ptr<closure_t> __cls_g = NULL); 
-# 914 "resolver.T"
+# 915 "resolver.T"
 class get_a_records__closure_t : public closure_t { public:   get_a_records__closure_t ( SubdomainInfo *sd,  ClientRegion *cr,  callback< void  ,  vector< record > >::ref cb) : closure_t ("resolver.T", "get_a_records"),  _stack (sd, cr, cb), _args (sd, cr, cb) {}   void reenter ()   {     get_a_records (_args.sd, _args.cr, _args.cb, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( SubdomainInfo *sd,  ClientRegion *cr,  callback< void  ,  vector< record > >::ref cb) {}      ClientRegion other;      vector< record > out;      vector< pair< record  ,  float > > rules;      rules_iter r_it;      bool rules_present;      unordered_map< ClientRegion  ,  float  ,  ClientRegionHash  ,  ClientRegionEqual > this_rec;      vector< pair< record  ,  float > >::iterator record_it;      double cumulative;      double random;   };   struct args_t {     args_t ( SubdomainInfo *sd,  ClientRegion *cr,  callback< void  ,  vector< record > >::ref cb) : sd (sd), cr (cr), cb (cb) {}      SubdomainInfo *sd;      ClientRegion *cr;      callback< void  ,  vector< record > >::ref cb;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 914 "resolver.T"
+# 915 "resolver.T"
 void 
 get_a_records( SubdomainInfo *__tame_sd,  ClientRegion *__tame_cr,  callback< void  ,  vector< record > >::ref __tame_cb, ptr<closure_t> __cls_g)
 {
-# 915 "resolver.T"
+# 916 "resolver.T"
 
   
-# 916 "resolver.T"
+# 917 "resolver.T"
   get_a_records__closure_t *__cls;   ptr<get_a_records__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<get_a_records__closure_t> (__tame_sd, __tame_cr, __tame_cb);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<get_a_records__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    ClientRegion &other = __cls->_stack.other;    vector< record > &out = __cls->_stack.out;    vector< pair< record  ,  float > > &rules = __cls->_stack.rules;    rules_iter &r_it = __cls->_stack.r_it;    bool &rules_present = __cls->_stack.rules_present;    unordered_map< ClientRegion  ,  float  ,  ClientRegionHash  ,  ClientRegionEqual > &this_rec = __cls->_stack.this_rec;    vector< pair< record  ,  float > >::iterator &record_it = __cls->_stack.record_it;    double &cumulative = __cls->_stack.cumulative;    double &random = __cls->_stack.random;    SubdomainInfo *&sd = __cls->_args.sd;    ClientRegion *&cr = __cls->_args.cr;    callback< void  ,  vector< record > >::ref &cb = __cls->_args.cb;    use_reference (sd);     use_reference (cr);     use_reference (cb);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto get_a_records__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 927 "resolver.T"
+# 928 "resolver.T"
 
   rules_present = false;
   r_it = sd->rules.find(*cr);
@@ -1126,9 +1127,9 @@ get_a_records( SubdomainInfo *__tame_sd,  ClientRegion *__tame_cr,  callback< vo
         out.push_back(record_it->first);
         TRIGGER(cb, out);
         
-# 941 "resolver.T"
-  do { __cls->end_of_scope_checks (941);
-# 941 "resolver.T"
+# 942 "resolver.T"
+  do { __cls->end_of_scope_checks (942);
+# 942 "resolver.T"
     return ;  } while (0);
       }
       record_it++;
@@ -1138,36 +1139,36 @@ get_a_records( SubdomainInfo *__tame_sd,  ClientRegion *__tame_cr,  callback< vo
   
   // If we don't have rules yet, just use proximity
   
-# 949 "resolver.T"
-  do {     do {       closure_wrapper<get_a_records__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 949);     __cls->set_jumpto (1); 
-# 949 "resolver.T"
+# 950 "resolver.T"
+  do {     do {       closure_wrapper<get_a_records__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 950);     __cls->set_jumpto (1); 
+# 950 "resolver.T"
  closest_n_records(sd, cr, MAX_A_RECORDS, mkevent(out)); 
-# 949 "resolver.T"
+# 950 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  get_a_records__label_1:       ;   } while (0);
-# 949 "resolver.T"
+# 950 "resolver.T"
 
   TRIGGER(cb, out);
-# 951 "resolver.T"
-  do {   __cls->end_of_scope_checks (951);   return;   } while (0);
-# 951 "resolver.T"
+# 952 "resolver.T"
+  do {   __cls->end_of_scope_checks (952);   return;   } while (0);
+# 952 "resolver.T"
 }
 
 // Gets a subdomain record from cache. May hit CRAQ if cached copy is
 // old or non-existent.
-# 955 "resolver.T"
+# 956 "resolver.T"
 static void  get_from_cache( string fqdn,  cb_sub cb, ptr<closure_t> __cls_g = NULL); 
-# 955 "resolver.T"
+# 956 "resolver.T"
 class get_from_cache__closure_t : public closure_t { public:   get_from_cache__closure_t ( string fqdn,  cb_sub cb) : closure_t ("resolver.T", "get_from_cache"),  _stack (fqdn, cb), _args (fqdn, cb) {}   void reenter ()   {     get_from_cache (_args.fqdn, _args.cb, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( string fqdn,  cb_sub cb) {}      SubdomainInfo to_find;      SubdomainInfo to_insert;      str subdomain_data;      subdomain sd;   };   struct args_t {     args_t ( string fqdn,  cb_sub cb) : fqdn (fqdn), cb (cb) {}      string fqdn;      cb_sub cb;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 955 "resolver.T"
+# 956 "resolver.T"
 void 
 get_from_cache( string __tame_fqdn,  cb_sub __tame_cb, ptr<closure_t> __cls_g)
 {
-# 955 "resolver.T"
+# 956 "resolver.T"
 
   
-# 956 "resolver.T"
+# 957 "resolver.T"
   get_from_cache__closure_t *__cls;   ptr<get_from_cache__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<get_from_cache__closure_t> (__tame_fqdn, __tame_cb);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<get_from_cache__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    SubdomainInfo &to_find = __cls->_stack.to_find;    SubdomainInfo &to_insert = __cls->_stack.to_insert;    str &subdomain_data = __cls->_stack.subdomain_data;    subdomain &sd = __cls->_stack.sd;    string &fqdn = __cls->_args.fqdn;    cb_sub &cb = __cls->_args.cb;    use_reference (fqdn);     use_reference (cb);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto get_from_cache__label_1;     break;   case 2:     goto get_from_cache__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 961 "resolver.T"
+# 962 "resolver.T"
 
   to_find.storage.fqdn = str(fqdn.c_str());
   if (debug) {
@@ -1182,21 +1183,21 @@ get_from_cache( string __tame_fqdn,  cb_sub __tame_cb, ptr<closure_t> __cls_g)
     if (debug) cout << "Getting key";
     fflush(stdout);
     
-# 974 "resolver.T"
-  do {     do {       closure_wrapper<get_from_cache__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 974);     __cls->set_jumpto (1); 
-# 974 "resolver.T"
+# 975 "resolver.T"
+  do {     do {       closure_wrapper<get_from_cache__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 975);     __cls->set_jumpto (1); 
+# 975 "resolver.T"
 craq.get_key(fqdn, mkevent(subdomain_data));
-# 974 "resolver.T"
+# 975 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  get_from_cache__label_1:       ;   } while (0);
-# 974 "resolver.T"
+# 975 "resolver.T"
 
     if (subdomain_data.len() < 20) {
       if (debug) cout << "CRAQ did not have data for this record\n";
       TRIGGER(cb, NULL);
       
-# 978 "resolver.T"
-  do { __cls->end_of_scope_checks (978);
-# 978 "resolver.T"
+# 979 "resolver.T"
+  do { __cls->end_of_scope_checks (979);
+# 979 "resolver.T"
     return ;  } while (0);
     }
 
@@ -1217,22 +1218,22 @@ craq.get_key(fqdn, mkevent(subdomain_data));
     TRIGGER(cb, 
       const_cast<SubdomainInfo*>(&*(subdomain_cache.find(to_insert))));
     
-# 997 "resolver.T"
-  do { __cls->end_of_scope_checks (997);
-# 997 "resolver.T"
+# 998 "resolver.T"
+  do { __cls->end_of_scope_checks (998);
+# 998 "resolver.T"
     return ;  } while (0);
   }
 
   // If data stored, test if it's expired
   if (time(NULL) > (subdomain_cache_it->validated + max_cache_period)) {
     
-# 1002 "resolver.T"
-  do {     do {       closure_wrapper<get_from_cache__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1002);     __cls->set_jumpto (2); 
-# 1002 "resolver.T"
+# 1003 "resolver.T"
+  do {     do {       closure_wrapper<get_from_cache__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1003);     __cls->set_jumpto (2); 
+# 1003 "resolver.T"
 craq.get_key(fqdn, mkevent(subdomain_data));
-# 1002 "resolver.T"
+# 1003 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  get_from_cache__label_2:       ;   } while (0);
-# 1002 "resolver.T"
+# 1003 "resolver.T"
 
     str2xdr(sd, subdomain_data);
     if (sd.seq_number > subdomain_cache_it->storage.seq_number) {
@@ -1250,9 +1251,9 @@ craq.get_key(fqdn, mkevent(subdomain_data));
       TRIGGER(cb,
       const_cast<SubdomainInfo*>(&*(subdomain_cache.find(to_insert))));
       
-# 1018 "resolver.T"
-  do { __cls->end_of_scope_checks (1018);
-# 1018 "resolver.T"
+# 1019 "resolver.T"
+  do { __cls->end_of_scope_checks (1019);
+# 1019 "resolver.T"
     return ;  } while (0);
     }
     else {
@@ -1270,35 +1271,35 @@ craq.get_key(fqdn, mkevent(subdomain_data));
   // Otherwise just return the existing subdomain
   TRIGGER(cb,
     const_cast<SubdomainInfo*>(&*(subdomain_cache_it)));
-# 1035 "resolver.T"
-  do {   __cls->end_of_scope_checks (1035);   return;   } while (0);
-# 1035 "resolver.T"
+# 1036 "resolver.T"
+  do {   __cls->end_of_scope_checks (1036);   return;   } while (0);
+# 1036 "resolver.T"
 }
 
-# 1037 "resolver.T"
+# 1038 "resolver.T"
 static void  process( int fd, ptr<closure_t> __cls_g = NULL); 
-# 1037 "resolver.T"
+# 1038 "resolver.T"
 class process__closure_t : public closure_t { public:   process__closure_t ( int fd) : closure_t ("resolver.T", "process"),  _stack (fd), _args (fd) {}   void reenter ()   {     process (_args.fd, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int fd) {}      strbuf resp;      strbuf out;      char buff[MAX_BUFF];      int line_len;      string type;      string qname;      string coralname;      string qclass;      string qtype;      int id;      istringstream input;      string remote_ip;      string in;      string query;      string test;      Statement *stmt;      ResultSet *res;      bool init;      str subdomain_data;      SubdomainInfo *sd;      record rec;      string record_data_str;      ClientRegion cr;      vector< record > recs;   };   struct args_t {     args_t ( int fd) : fd (fd) {}      int fd;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 1037 "resolver.T"
+# 1038 "resolver.T"
 void 
 process( int __tame_fd, ptr<closure_t> __cls_g)
 {
-# 1037 "resolver.T"
+# 1038 "resolver.T"
 
   
-# 1038 "resolver.T"
+# 1039 "resolver.T"
   process__closure_t *__cls;   ptr<process__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<process__closure_t> (__tame_fd);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<process__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    strbuf &resp = __cls->_stack.resp;    strbuf &out = __cls->_stack.out;    char *buff = __cls->_stack.buff;    int &line_len = __cls->_stack.line_len;    string &type = __cls->_stack.type;    string &qname = __cls->_stack.qname;    string &coralname = __cls->_stack.coralname;    string &qclass = __cls->_stack.qclass;    string &qtype = __cls->_stack.qtype;    int &id = __cls->_stack.id;    istringstream &input = __cls->_stack.input;    string &remote_ip = __cls->_stack.remote_ip;    string &in = __cls->_stack.in;    string &query = __cls->_stack.query;    string &test = __cls->_stack.test;    Statement *&stmt = __cls->_stack.stmt;    ResultSet *&res = __cls->_stack.res;    bool &init = __cls->_stack.init;    str &subdomain_data = __cls->_stack.subdomain_data;    SubdomainInfo *&sd = __cls->_stack.sd;    record &rec = __cls->_stack.rec;    string &record_data_str = __cls->_stack.record_data_str;    ClientRegion &cr = __cls->_stack.cr;    vector< record > &recs = __cls->_stack.recs;    int &fd = __cls->_args.fd;    use_reference (fd);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto process__label_1;     break;   case 2:     goto process__label_2;     break;   case 3:     goto process__label_3;     break;   case 4:     goto process__label_4;     break;   case 5:     goto process__label_5;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 1063 "resolver.T"
+# 1064 "resolver.T"
 
   while (true) {
     
-# 1065 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1065);     __cls->set_jumpto (1); 
-# 1065 "resolver.T"
+# 1066 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1066);     __cls->set_jumpto (1); 
+# 1066 "resolver.T"
  tame::waitread (fd, mkevent()); 
-# 1065 "resolver.T"
+# 1066 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_1:       ;   } while (0);
-# 1065 "resolver.T"
+# 1066 "resolver.T"
 
     if ( (resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
       break;
@@ -1333,27 +1334,30 @@ process( int __tame_fd, ptr<closure_t> __cls_g)
       //out << id;
     
       
-# 1098 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1098);     __cls->set_jumpto (2); 
-# 1098 "resolver.T"
+# 1099 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1099);     __cls->set_jumpto (2); 
+# 1099 "resolver.T"
 get_client_region(remote_ip, mkevent(cr));
-# 1098 "resolver.T"
+# 1099 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_2:       ;   } while (0);
-# 1098 "resolver.T"
+# 1099 "resolver.T"
 
       cout << cr.lat << "," << cr.lon << endl;
       if (type == "AXFR") {
         out << strbuf("%s", last.c_str());
       }
+      else if (qname == "IN" || qname == "ANY" || qname == "SOA" || qname == "CNAME") {
+        out << strbuf("%s", last.c_str());
+      } 
       else {
         
-# 1104 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (3, 1104);     __cls->set_jumpto (3); 
-# 1104 "resolver.T"
+# 1108 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (3, 1108);     __cls->set_jumpto (3); 
+# 1108 "resolver.T"
 get_from_cache(qname, mkevent(sd));
-# 1104 "resolver.T"
+# 1108 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_3:       ;   } while (0);
-# 1104 "resolver.T"
+# 1108 "resolver.T"
 
         if (sd != NULL) {
           if (coralname.size() > 0) qname = coralname;
@@ -1363,13 +1367,13 @@ get_from_cache(qname, mkevent(sd));
 	  // Get A Records according to optimal policy
 	  if (qtype == "A" || qtype == "ANY") {
 	    
-# 1112 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (4, 1112);     __cls->set_jumpto (4); 
-# 1112 "resolver.T"
+# 1116 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (4, 1116);     __cls->set_jumpto (4); 
+# 1116 "resolver.T"
 get_a_records(sd, &cr, mkevent(recs));
-# 1112 "resolver.T"
+# 1116 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_4:       ;   } while (0);
-# 1112 "resolver.T"
+# 1116 "resolver.T"
 
 	    vector<record>::iterator it = recs.begin();
 	    while (it != recs.end()) {
@@ -1397,13 +1401,13 @@ get_a_records(sd, &cr, mkevent(recs));
       out << "END\n";    
     }
     
-# 1138 "resolver.T"
-  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (5, 1138);     __cls->set_jumpto (5); 
-# 1138 "resolver.T"
+# 1142 "resolver.T"
+  do {     do {       closure_wrapper<process__closure_t > __cls_g (__cls_r);     __cls->init_block (5, 1142);     __cls->set_jumpto (5); 
+# 1142 "resolver.T"
  tame:: waitwrite (fd, mkevent()); 
-# 1138 "resolver.T"
+# 1142 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  process__label_5:       ;   } while (0);
-# 1138 "resolver.T"
+# 1142 "resolver.T"
 
     if ( out.tosuio()->output(fd) < 0) {
       close(fd);
@@ -1416,29 +1420,29 @@ get_a_records(sd, &cr, mkevent(recs));
     input.clear();
   }
   
-# 1149 "resolver.T"
-  do { __cls->end_of_scope_checks (1149);
-# 1149 "resolver.T"
+# 1153 "resolver.T"
+  do { __cls->end_of_scope_checks (1153);
+# 1153 "resolver.T"
     return ;  } while (0);
-# 1150 "resolver.T"
-  do {   __cls->end_of_scope_checks (1150);   return;   } while (0);
-# 1150 "resolver.T"
+# 1154 "resolver.T"
+  do {   __cls->end_of_scope_checks (1154);   return;   } while (0);
+# 1154 "resolver.T"
 }
 
-# 1152 "resolver.T"
+# 1156 "resolver.T"
 static void  listen_loop(ptr<closure_t> __cls_g = NULL); 
-# 1152 "resolver.T"
-class listen_loop__closure_t : public closure_t { public:   listen_loop__closure_t () : closure_t ("resolver.T", "listen_loop"),  _stack (), _args () {}   void reenter ()   {     listen_loop (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () : G ("resolver.T", 1155)  {}      int s;      int fd;      int len;      rendezvous_t< ev_t > G;      socklen_t t;      struct sockaddr_un local;      struct sockaddr_un remote;      char input[1000];      ev_t which;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 1152 "resolver.T"
+# 1156 "resolver.T"
+class listen_loop__closure_t : public closure_t { public:   listen_loop__closure_t () : closure_t ("resolver.T", "listen_loop"),  _stack (), _args () {}   void reenter ()   {     listen_loop (mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t () : G ("resolver.T", 1159)  {}      int s;      int fd;      int len;      rendezvous_t< ev_t > G;      socklen_t t;      struct sockaddr_un local;      struct sockaddr_un remote;      char input[1000];      ev_t which;   };   struct args_t {     args_t () {}   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
+# 1156 "resolver.T"
 void 
 listen_loop(ptr<closure_t> __cls_g)
 {
-# 1152 "resolver.T"
+# 1156 "resolver.T"
 
   
-# 1153 "resolver.T"
+# 1157 "resolver.T"
   listen_loop__closure_t *__cls;   ptr<listen_loop__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<listen_loop__closure_t> ();     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<listen_loop__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    int &s = __cls->_stack.s;    int &fd = __cls->_stack.fd;    int &len = __cls->_stack.len;    rendezvous_t< ev_t > &G = __cls->_stack.G;    socklen_t &t = __cls->_stack.t;    struct sockaddr_un &local = __cls->_stack.local;    struct sockaddr_un &remote = __cls->_stack.remote;    char *input = __cls->_stack.input;    ev_t &which = __cls->_stack.which;   switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto listen_loop__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 1160 "resolver.T"
+# 1164 "resolver.T"
 
 
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
@@ -1465,9 +1469,9 @@ listen_loop(ptr<closure_t> __cls_g)
       int n;
       if (debug) cout << "Waiting for a connection...\n";
       
-# 1185 "resolver.T"
+# 1189 "resolver.T"
 listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set_jumpto (1);       (G)._ti_set_join_cls (__cls_r);       return;   } else {     (G)._ti_clear_join_method ();   } } while (0);
-# 1185 "resolver.T"
+# 1189 "resolver.T"
 
 
       switch (which) {
@@ -1486,29 +1490,29 @@ listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set
       }
   }
   
-# 1202 "resolver.T"
-  do { __cls->end_of_scope_checks (1202);
-# 1202 "resolver.T"
+# 1206 "resolver.T"
+  do { __cls->end_of_scope_checks (1206);
+# 1206 "resolver.T"
     return ;  } while (0);
-# 1203 "resolver.T"
-  do {   __cls->end_of_scope_checks (1203);   return;   } while (0);
-# 1203 "resolver.T"
+# 1207 "resolver.T"
+  do {   __cls->end_of_scope_checks (1207);   return;   } while (0);
+# 1207 "resolver.T"
 }
 
-# 1205 "resolver.T"
+# 1209 "resolver.T"
 static void  main2( int argc,  char  * *argv, ptr<closure_t> __cls_g = NULL); 
-# 1205 "resolver.T"
+# 1209 "resolver.T"
 class main2__closure_t : public closure_t { public:   main2__closure_t ( int argc,  char  * *argv) : closure_t ("resolver.T", "main2"),  _stack (argc, argv), _args (argc, argv) {}   void reenter ()   {     main2 (_args.argc, _args.argv, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int argc,  char  * *argv) : pa ("donar.conf", -1)  {}      Driver *driver;      Statement *quova_stmt;      bool init_success;      int log_clean_interval;      conftab ct;      int ch;      str config;      vec< str > av;      int line;      bool errors;      parseargs pa;      struct in_addr addr;      strbuf mosek_buf;   };   struct args_t {     args_t ( int argc,  char  * *argv) : argc (argc), argv (argv) {}      int argc;      char  * *argv;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 1205 "resolver.T"
+# 1209 "resolver.T"
 void 
 main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
 {
-# 1205 "resolver.T"
+# 1209 "resolver.T"
 
   
-# 1206 "resolver.T"
+# 1210 "resolver.T"
   main2__closure_t *__cls;   ptr<main2__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<main2__closure_t> (__tame_argc, __tame_argv);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<main2__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    Driver *&driver = __cls->_stack.driver;    Statement *&quova_stmt = __cls->_stack.quova_stmt;    bool &init_success = __cls->_stack.init_success;    int &log_clean_interval = __cls->_stack.log_clean_interval;    conftab &ct = __cls->_stack.ct;    int &ch = __cls->_stack.ch;    str &config = __cls->_stack.config;    vec< str > &av = __cls->_stack.av;    int &line = __cls->_stack.line;    bool &errors = __cls->_stack.errors;    parseargs &pa = __cls->_stack.pa;    struct in_addr &addr = __cls->_stack.addr;    strbuf &mosek_buf = __cls->_stack.mosek_buf;    int &argc = __cls->_args.argc;    char  * *&argv = __cls->_args.argv;    use_reference (argc);     use_reference (argv);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto main2__label_1;     break;   case 2:     goto main2__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 1220 "resolver.T"
+# 1224 "resolver.T"
 
   /*
   while ((ch = getopt(argc, argv, "C")) != -1) {
@@ -1565,26 +1569,26 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
 
   // Temporary debug
   
-# 1275 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1275);     __cls->set_jumpto (1); 
-# 1275 "resolver.T"
+# 1279 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1279);     __cls->set_jumpto (1); 
+# 1279 "resolver.T"
  client_debug(mkevent()); 
-# 1275 "resolver.T"
+# 1279 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_1:       ;   } while (0);
-# 1275 "resolver.T"
+# 1279 "resolver.T"
 
 
   // Setup craq connection
   
-# 1278 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1278);     __cls->set_jumpto (2); 
-# 1278 "resolver.T"
+# 1282 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1282);     __cls->set_jumpto (2); 
+# 1282 "resolver.T"
 
     craq.init(string(zoo_list.cstr()), mkevent(init_success));
   
-# 1280 "resolver.T"
+# 1284 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_2:       ;   } while (0);
-# 1280 "resolver.T"
+# 1284 "resolver.T"
 
   logfile << "Using IP Address: " << craq.my_ip_addr.c_str();
   inet_aton(craq.my_ip_addr.c_str(), &addr);
@@ -1599,9 +1603,9 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
   }
   
   listen_loop();
-# 1294 "resolver.T"
-  do {   __cls->end_of_scope_checks (1294);   return;   } while (0);
-# 1294 "resolver.T"
+# 1298 "resolver.T"
+  do {   __cls->end_of_scope_checks (1298);   return;   } while (0);
+# 1298 "resolver.T"
 }
 
 int main (int argc, char* argv[]) {
