@@ -249,13 +249,22 @@ void clean_request_logs() {
   while (sd_it != subdomain_cache.end()) {
     SubdomainInfo* sd = const_cast<SubdomainInfo*>(&*sd_it);
     client_requests_iter it = sd->num_requests.begin();
+    int client_total = 0;
     while (it != sd->num_requests.end()) {
       unordered_map<size_t, unsigned int>* map = it->second;
       num_request_iter t_it = map->begin();
       while (t_it != map->end()) {
-        if (t_it->first < cutoff_time) 
-          map->erase(t_it->first);           
+        if (t_it->first < cutoff_time) {
+          map->erase(t_it->first);     
+        }
+        else {
+          client_total += 1;
+        }      
         t_it++;
+      }
+      if (client_total < 5) {
+        delete &(*it); 
+        sd->num_requests.erase(it);
       }
       it++;
     }
