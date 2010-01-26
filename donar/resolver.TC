@@ -1455,6 +1455,7 @@ listen_loop(ptr<closure_t> __cls_g)
 # 1172 "resolver.T"
 
 
+  signal(SIGPIPE, SIG_IGN);
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
       perror("socket");
       exit(1);
@@ -1479,9 +1480,9 @@ listen_loop(ptr<closure_t> __cls_g)
       int n;
       if (debug) cout << "Waiting for a connection...\n";
       
-# 1197 "resolver.T"
+# 1198 "resolver.T"
 listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set_jumpto (1);       (G)._ti_set_join_cls (__cls_r);       return;   } else {     (G)._ti_clear_join_method ();   } } while (0);
-# 1197 "resolver.T"
+# 1198 "resolver.T"
 
 
       switch (which) {
@@ -1500,29 +1501,29 @@ listen_loop__label_1: do {   if (!(G)._ti_next_trigger (which)) {     __cls->set
       }
   }
   
-# 1214 "resolver.T"
-  do { __cls->end_of_scope_checks (1214);
-# 1214 "resolver.T"
+# 1215 "resolver.T"
+  do { __cls->end_of_scope_checks (1215);
+# 1215 "resolver.T"
     return ;  } while (0);
-# 1215 "resolver.T"
-  do {   __cls->end_of_scope_checks (1215);   return;   } while (0);
-# 1215 "resolver.T"
+# 1216 "resolver.T"
+  do {   __cls->end_of_scope_checks (1216);   return;   } while (0);
+# 1216 "resolver.T"
 }
 
-# 1217 "resolver.T"
+# 1218 "resolver.T"
 static void  main2( int argc,  char  * *argv, ptr<closure_t> __cls_g = NULL); 
-# 1217 "resolver.T"
+# 1218 "resolver.T"
 class main2__closure_t : public closure_t { public:   main2__closure_t ( int argc,  char  * *argv) : closure_t ("resolver.T", "main2"),  _stack (argc, argv), _args (argc, argv) {}   void reenter ()   {     main2 (_args.argc, _args.argv, mkref (this));   } void v_reenter () { reenter (); }   struct stack_t {     stack_t ( int argc,  char  * *argv) : pa ("donar.conf", -1)  {}      Driver *driver;      Statement *quova_stmt;      bool init_success;      int log_clean_interval;      conftab ct;      int ch;      str config;      vec< str > av;      int line;      bool errors;      parseargs pa;      struct in_addr addr;      strbuf mosek_buf;   };   struct args_t {     args_t ( int argc,  char  * *argv) : argc (argc), argv (argv) {}      int argc;      char  * *argv;   };   stack_t _stack;   args_t _args;   bool is_onstack (const void *p) const   {     return (static_cast<const void *> (&_stack) <= p &&             static_cast<const void *> (&_stack + 1) > p);   } }; 
-# 1217 "resolver.T"
+# 1218 "resolver.T"
 void 
 main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
 {
-# 1217 "resolver.T"
+# 1218 "resolver.T"
 
   
-# 1218 "resolver.T"
+# 1219 "resolver.T"
   main2__closure_t *__cls;   ptr<main2__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<main2__closure_t> (__tame_argc, __tame_argv);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<main2__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    Driver *&driver = __cls->_stack.driver;    Statement *&quova_stmt = __cls->_stack.quova_stmt;    bool &init_success = __cls->_stack.init_success;    int &log_clean_interval = __cls->_stack.log_clean_interval;    conftab &ct = __cls->_stack.ct;    int &ch = __cls->_stack.ch;    str &config = __cls->_stack.config;    vec< str > &av = __cls->_stack.av;    int &line = __cls->_stack.line;    bool &errors = __cls->_stack.errors;    parseargs &pa = __cls->_stack.pa;    struct in_addr &addr = __cls->_stack.addr;    strbuf &mosek_buf = __cls->_stack.mosek_buf;    int &argc = __cls->_args.argc;    char  * *&argv = __cls->_args.argv;    use_reference (argc);     use_reference (argv);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto main2__label_1;     break;   case 2:     goto main2__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
-# 1232 "resolver.T"
+# 1233 "resolver.T"
 
   /*
   while ((ch = getopt(argc, argv, "C")) != -1) {
@@ -1579,26 +1580,26 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
 
   // Temporary debug
   
-# 1287 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1287);     __cls->set_jumpto (1); 
-# 1287 "resolver.T"
+# 1288 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (1, 1288);     __cls->set_jumpto (1); 
+# 1288 "resolver.T"
  client_debug(mkevent()); 
-# 1287 "resolver.T"
+# 1288 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_1:       ;   } while (0);
-# 1287 "resolver.T"
+# 1288 "resolver.T"
 
 
   // Setup craq connection
   
-# 1290 "resolver.T"
-  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1290);     __cls->set_jumpto (2); 
-# 1290 "resolver.T"
+# 1291 "resolver.T"
+  do {     do {       closure_wrapper<main2__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 1291);     __cls->set_jumpto (2); 
+# 1291 "resolver.T"
 
     craq.init(string(zoo_list.cstr()), mkevent(init_success));
   
-# 1292 "resolver.T"
+# 1293 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  main2__label_2:       ;   } while (0);
-# 1292 "resolver.T"
+# 1293 "resolver.T"
 
   logfile << "Using IP Address: " << craq.my_ip_addr.c_str();
   inet_aton(craq.my_ip_addr.c_str(), &addr);
@@ -1613,9 +1614,9 @@ main2( int __tame_argc,  char  * *__tame_argv, ptr<closure_t> __cls_g)
   }
  
   listen_loop();
-# 1306 "resolver.T"
-  do {   __cls->end_of_scope_checks (1306);   return;   } while (0);
-# 1306 "resolver.T"
+# 1307 "resolver.T"
+  do {   __cls->end_of_scope_checks (1307);   return;   } while (0);
+# 1307 "resolver.T"
 }
 
 int main (int argc, char* argv[]) {

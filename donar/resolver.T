@@ -1174,6 +1174,7 @@ tamed static void listen_loop() {
     ev_t which;
   }
 
+  signal(SIGPIPE, SIG_IGN);
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
       perror("socket");
       exit(1);
