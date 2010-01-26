@@ -84,7 +84,6 @@ typedef callback<void, unordered_map<std::string, double>, double>::ref cb_total
 
 typedef unordered_map<ClientRegion, vector<pair<record, float> >, ClientRegionHash, ClientRegionEqual >::iterator rules_iter;
 
-
 typedef vector<pair<record, float> >::iterator client_rule_iter;
 
 class SubdomainEqual {
