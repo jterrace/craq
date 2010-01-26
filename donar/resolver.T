@@ -264,7 +264,6 @@ void clean_request_logs() {
         t_it++;
       }
       if (client_total < 5) {
-        delete &(*it); 
         sd->num_requests.erase(it);
       }
       it++;
