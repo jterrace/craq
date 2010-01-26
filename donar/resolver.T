@@ -181,8 +181,8 @@ tamed static void get_client_region(string ip, cb_cr cb) {
   lon_d = static_cast<int>(lon_f);
 
   // Binning
-  lat_d_rounded = lat_d - (lat_d % 8);
-  lon_d_rounded = lon_d - (lon_d % 8);
+  lat_d_rounded = lat_d - (lat_d % geo_rounding);
+  lon_d_rounded = lon_d - (lon_d % geo_rounding);
  
   ClientRegion out = ClientRegion(lat_d_rounded, lon_d_rounded);
 
