@@ -858,7 +858,7 @@ tamed void client_debug(callback<void>::ref cb) {
       sd = const_cast<SubdomainInfo*>(&*sd_it);
       if (debug) cout <<  sd->storage.fqdn.cstr();
       // Calculate optimal routes based on external traffic
-      //twait{ sd->calculate_optimal_routes(mkevent()); }
+      twait{ sd->calculate_optimal_routes(mkevent()); }
       //twait {sd->update_expected_traffic(10, mkevent());}
       sd_it++;
     }

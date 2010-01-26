@@ -1006,7 +1006,7 @@ client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
 
   
 # 841 "resolver.T"
-  client_debug__closure_t *__cls;   ptr<client_debug__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<client_debug__closure_t> (__tame_cb);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<client_debug__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    SubdomainInfo *&sd = __cls->_stack.sd;    unsigned int &next_update_interval = __cls->_stack.next_update_interval;    subdomain_cache_it &sd_it = __cls->_stack.sd_it;    callback< void >::ref &cb = __cls->_args.cb;    use_reference (cb);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto client_debug__label_1;     break;   default:     panic ("unexpected case.\n");     break;   }
+  client_debug__closure_t *__cls;   ptr<client_debug__closure_t > __cls_r;   if (!__cls_g) {     if (tame_check_leaks ()) start_rendezvous_collection ();     __cls_r = New refcounted<client_debug__closure_t> (__tame_cb);     if (tame_check_leaks ()) __cls_r->collect_rendezvous ();     __cls = __cls_r;     __cls_g = __cls_r;   } else {     __cls =     reinterpret_cast<client_debug__closure_t *> (static_cast<closure_t *> (__cls_g));     __cls_r = mkref (__cls);   }    SubdomainInfo *&sd = __cls->_stack.sd;    unsigned int &next_update_interval = __cls->_stack.next_update_interval;    subdomain_cache_it &sd_it = __cls->_stack.sd_it;    callback< void >::ref &cb = __cls->_args.cb;    use_reference (cb);    switch (__cls->jumpto ()) {   case 0: break;   case 1:     goto client_debug__label_1;     break;   case 2:     goto client_debug__label_2;     break;   default:     panic ("unexpected case.\n");     break;   }
 # 845 "resolver.T"
 
   TRIGGER(cb);
@@ -1029,7 +1029,15 @@ client_debug( callback< void >::ref __tame_cb, ptr<closure_t> __cls_g)
       sd = const_cast<SubdomainInfo*>(&*sd_it);
       if (debug) cout <<  sd->storage.fqdn.cstr();
       // Calculate optimal routes based on external traffic
-      //twait{ sd->calculate_optimal_routes(mkevent()); }
+      
+# 858 "resolver.T"
+  do {     do {       closure_wrapper<client_debug__closure_t > __cls_g (__cls_r);     __cls->init_block (2, 858);     __cls->set_jumpto (2); 
+# 858 "resolver.T"
+ sd->calculate_optimal_routes(mkevent()); 
+# 858 "resolver.T"
+      if (!__cls->block_dec_count (__FL__))       return;     } while (0);  client_debug__label_2:       ;   } while (0);
+# 858 "resolver.T"
+
       //twait {sd->update_expected_traffic(10, mkevent());}
       sd_it++;
     }
