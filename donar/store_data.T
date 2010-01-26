@@ -49,7 +49,7 @@ tamed static void main2() {
   else {
     warn << "Connection establishemnt failed.\n";
   }
-  sd.seq_number = 5;
+  sd.seq_number = 6;
   sd.fqdn = "nyud.net";
 
   rec.type = "A";
@@ -62,17 +62,27 @@ tamed static void main2() {
   rec.type = "A";
   sd.records.push_back(rec);
 
-  rec.content = "213.131.1.101"; // plab-1.sinp.msu.ru
+  rec.content = "140.112.42.158"; //adam.ee.ntu.edu.tw
   rec.ttl  = 10;
   rec.type = "A";
   sd.records.push_back(rec);
 
-  rec.content = "129.97.74.12"; // plink.cs.uwaterloo.ca
+  rec.content = "193.147.162.166"; //ait05.us.es
+  rec.ttl  = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "203.178.133.11"; //planetlab1.dojima.wide.ad.jp
+  rec.ttl  = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
+  rec.content = "137.165.1.113"; // planetlab3.williams.edu
   rec.ttl = 10;
   rec.type = "A";
   sd.records.push_back(rec);
 
-  rec.content = "193.196.39.10"; // iraplab2.iralab.uni-karlsruhe.de
+  rec.content = "207.197.40.250"; // planetlab1.scsr.nevada.edu
   rec.ttl = 10;
   rec.type = "A";
   sd.records.push_back(rec);
@@ -81,6 +91,12 @@ tamed static void main2() {
   rec.ttl = 10;
   rec.type = "A";
   sd.records.push_back(rec);
+
+  rec.content = "138.251.214.78"; // planetlab4.cs.st-andrews.ac.uk
+  rec.ttl = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
 
   rec.content = "216.165.109.82.ip4.nyucd.net. hostmaster.nyucd.net. 0 1800 3600 7200 3600";
   rec.ttl = 3600;
