@@ -989,6 +989,11 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
     }
     str2xdr(sd, subdomain_data);
 
+    if (sd.fqdn.len() == 0) {
+      TRIGGER(cb, NULL);
+      return;
+    }
+
     to_insert.storage = sd;
     to_insert.validated = time(NULL);
     subdomain_cache.insert(to_insert);

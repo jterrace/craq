@@ -49,7 +49,7 @@ tamed static void main2() {
   else {
     warn << "Connection establishemnt failed.\n";
   }
-  sd.seq_number = 3;
+  sd.seq_number = 5;
   sd.fqdn = "nyud.net";
 
   rec.type = "A";
@@ -81,6 +81,12 @@ tamed static void main2() {
   rec.ttl = 10;
   rec.type = "A";
   sd.records.push_back(rec);
+
+  rec.content = "216.165.109.82.ip4.nyucd.net. hostmaster.nyucd.net. 0 1800 3600 7200 3600";
+  rec.ttl = 3600;
+  rec.type = "SOA";
+  //sd.records.push_back(rec);
+  
 
   sd2.fqdn = "foo.com";
   rec5.content = "1.2.3.4";
