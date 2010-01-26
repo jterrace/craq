@@ -762,14 +762,14 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   // Populate routing rules based on the new data
   for (i = 0; i < num_clients; i++) {
     client_rules = vector<pair<record, float> > ();
-    cout << "(" << props[i].first.lat << ", " << props[i].first.lon << ") < ";
+    cout << "(" << props[i].first.lat << "," << props[i].first.lon << "):";
     for (j = 0; j < num_servers; j++) {
       client_rules.push_back(pair<record, float> 
         (this->storage.records[j], result[i * num_servers + j]));
       cout << this->storage.records[j].content;
-      cout << " " << result[i * num_servers + j] << " ";
+      cout << "-" << result[i * num_servers + j] << "--";
     }
-    cout << ">";
+    cout << "::";
     new_rules.insert(pair<ClientRegion, vector<pair<record, float> > > (
       props[i].first, client_rules));
   }
