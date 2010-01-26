@@ -1174,7 +1174,6 @@ tamed static void listen_loop() {
     ev_t which;
   }
 
-  signal(SIGPIPE, SIG_IGN);
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
       perror("socket");
       exit(1);
@@ -1310,6 +1309,7 @@ tamed static void main2(int argc, char** argv) {
 }
 
 int main (int argc, char* argv[]) {
+  signal(SIGPIPE, SIG_IGN);
   main2(argc, argv);
   amain();
 }
