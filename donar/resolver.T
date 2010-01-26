@@ -65,6 +65,8 @@ tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual>
   subdomain_cache;
 tr1::unordered_set<SubdomainInfo, SubdomainHash, SubdomainEqual>::iterator
   subdomain_cache_it;
+bool subdomain_cache_lock; // For when we iterate through, need to make sure
+                           // it's not modified.
 
 // Cache of IP location lookups so we don't hit quova as often
 tr1::unordered_map<unsigned long, ClientRegion> location_cache;
@@ -246,6 +248,7 @@ void print_request_logs(SubdomainInfo* sd) {
 void clean_request_logs() {
   subdomain_cache_it = subdomain_cache.begin();
   size_t cutoff_time = time(NULL) - (60 * LOG_EXPIRY_MINUTES);
+  subdomain_cache_lock = true;
   while (subdomain_cache_it != subdomain_cache.end()) {
     SubdomainInfo* sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
     client_requests_iter it = sd->num_requests.begin();
@@ -261,6 +264,7 @@ void clean_request_logs() {
     }
     subdomain_cache_it++;
   }
+  subdomain_cache_lock = false;
   delaycb(LOG_CLEAN_INTERVAL_MINS * 60, 0, wrap(clean_request_logs));
 }
 
@@ -852,6 +856,7 @@ tamed void client_debug(callback<void>::ref cb) {
       cout << "Delaying optimization " << next_update_interval << " seconds\n";
     twait { delaycb(next_update_interval, 0, mkevent()); }
     subdomain_cache_it = subdomain_cache.begin();
+    subdomain_cache_lock = true;
     if (debug) cout << "Running optimization\n\n";
     while (subdomain_cache_it != subdomain_cache.end()) {
       sd = const_cast<SubdomainInfo*>(&*subdomain_cache_it);
@@ -861,6 +866,7 @@ tamed void client_debug(callback<void>::ref cb) {
       //twait {sd->update_expected_traffic(10, mkevent());}
       subdomain_cache_it++;
     }
+    subdomain_cache_lock = false;
     next_update_interval = (update_interval - next_update_interval) + 
                            (rand() % update_interval + 1);
   }
@@ -1015,6 +1021,9 @@ tamed static void get_from_cache(string fqdn, cb_sub cb) {
       to_insert.validated = time(NULL);
       // Save request data from old entry
       to_insert.num_requests = subdomain_cache_it->num_requests;
+      while (subdomain_cache_lock == true) {
+        twait { delaycb(0, 1000000, mkevent()); }
+      }
       subdomain_cache.erase(subdomain_cache_it);
       subdomain_cache.insert(to_insert);
       if (debug) {
@@ -1301,7 +1310,8 @@ tamed static void main2(int argc, char** argv) {
     if (debug) cout << "Connection establishemnt failed.\n";
     exit(-1);
   }
-  
+ 
+  subdomain_cache_lock = false; 
   listen_loop();
 }
 
