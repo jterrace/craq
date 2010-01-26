@@ -57,6 +57,7 @@ craq_interface craq;
 unsigned int my_ip_addr;
 unsigned int update_interval;
 unsigned int max_cache_period;
+unsigned int geo_rounding;
 
 string last; // PDNS hack
 
@@ -1264,6 +1265,8 @@ tamed static void main2(int argc, char** argv) {
       ("MaxCacheSeconds", &max_cache_period, 0, 300, 10));
   ct.insert(New conftab_int<unsigned int>
       ("UpdateInterval", &update_interval, 0, 10000, 500));
+ ct.insert(New conftab_int<unsigned int>
+      ("GeoRounding", &geo_rounding, 0, 100, 10));
 
   line = 0;
   while (pa.getline(&av, &line)) {
