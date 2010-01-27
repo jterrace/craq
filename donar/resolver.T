@@ -165,22 +165,28 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     TRIGGER(cb, location_cache_it->second);
     return;
   }
-  st = quova_conn->createStatement();
-  res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
-    SELECT MAX(start_ip_int) FROM quova b\
-    WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
-    AND a.end_ip_int >= INET_ATON('" + ip + "');");
+  try {
+    st = quova_conn->createStatement();
+    res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
+      SELECT MAX(start_ip_int) FROM quova b\
+      WHERE b.start_ip_int <= INET_ATON('" + ip + "'))\
+      AND a.end_ip_int >= INET_ATON('" + ip + "');");
 
-  lat_f = 0;
-  lon_f = 0;
+    lat_f = 0;
+    lon_f = 0;
 
-  while (res->next()) {
-    lat_f = static_cast<float>(res->getInt("latitude"));
-    lon_f = static_cast<float>(res->getInt("longitude"));
+    while (res->next()) {
+      lat_f = static_cast<float>(res->getInt("latitude"));
+      lon_f = static_cast<float>(res->getInt("longitude"));
+    }
+
+    lat_d = static_cast<int>(lat_f);
+    lon_d = static_cast<int>(lon_f);
+  } catch (sql::SQLException &e) {
+    cout << "ERROR: Mysql Exception!!!\n";
+    lat_d = 0;
+    lon_d = 0;
   }
-  lat_d = static_cast<int>(lat_f);
-  lon_d = static_cast<int>(lon_f);
-
   // Binning
   lat_d_rounded = lat_d - (lat_d % geo_rounding);
   lon_d_rounded = lon_d - (lon_d % geo_rounding);
@@ -221,6 +227,10 @@ tamed static void closest_n_records(SubdomainInfo* sd, ClientRegion* cr, int
   }
   by_distance_it = by_distance.begin();
   for (i = 0; (i < by_distance.size()) && (i < n); i++) {
+//    if (by_distance.count(by_distance_it->first) > 1) {
+//      
+ //   }
+ //   else {
     out.push_back(by_distance_it->second);
     by_distance_it++;
   }
