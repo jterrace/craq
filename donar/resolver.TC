@@ -768,7 +768,7 @@ SubdomainInfo::calculate_optimal_routes( callback< void >::ref __tame_cb, ptr<cl
     for (j=0; j < num_clients; j++) {
       for (k=0; k < num_clients; k++) {
         memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));
-        temp = props[j].second * props[k].second * lambda;
+        temp = S_n * S_n * props[j].second * props[k].second * lambda;
         if (j >= k) {
           r = MSK_putqobjij(task, j * num_servers + i, 
                                   k * num_servers + i, temp);
@@ -834,7 +834,7 @@ get_client_region(
 
       if (debug) cout << "Lambda: " << lambda << " P_other: " << P_other
         << " Proportion: " << proportion << endl;
-      temp+= S_n * 2 * (P_other - proportion) * lambda;
+      temp+= S_n * 2  * props[i].second * (P_other - proportion) * lambda;
       MSK_putcj(task, i * num_servers + j, temp);
     }
   }
@@ -917,44 +917,43 @@ this->update_expected_traffic(10, mkevent());
 # 790 "resolver.T"
 
 
-
   update_prob = 1.0 / craq.number_of_nodes();
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
     
-# 796 "resolver.T"
-  do { __cls->end_of_scope_checks (796);
-# 796 "resolver.T"
+# 795 "resolver.T"
+  do { __cls->end_of_scope_checks (795);
+# 795 "resolver.T"
     return ;  } while (0);
   }
 
   TRIGGER(cb);
   
-# 800 "resolver.T"
-  do { __cls->end_of_scope_checks (800);
-# 800 "resolver.T"
+# 799 "resolver.T"
+  do { __cls->end_of_scope_checks (799);
+# 799 "resolver.T"
     return ;  } while (0);
 
   // Update optimization paramters
 
   
-# 804 "resolver.T"
-  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (7, 804);     __cls->set_jumpto (7); 
-# 804 "resolver.T"
+# 803 "resolver.T"
+  do {     do {       closure_wrapper<SubdomainInfo__calculate_optimal_routes__closure_t > __cls_g (__cls_r);     __cls->init_block (7, 803);     __cls->set_jumpto (7); 
+# 803 "resolver.T"
  this->get_traffic_totals(sd_opt, true, 
     mkevent(totals, total_traffic)); 
-# 805 "resolver.T"
+# 804 "resolver.T"
       if (!__cls->block_dec_count (__FL__))       return;     } while (0);  SubdomainInfo__calculate_optimal_routes__label_7:       ;   } while (0);
-# 805 "resolver.T"
+# 804 "resolver.T"
 
 
   // We can't do anything useful if there is no traffic right now
   if (total_traffic < 0.1) {
     TRIGGER(cb);
     
-# 810 "resolver.T"
-  do { __cls->end_of_scope_checks (810);
-# 810 "resolver.T"
+# 809 "resolver.T"
+  do { __cls->end_of_scope_checks (809);
+# 809 "resolver.T"
     return ;  } while (0);
   }
   if (debug) cout << "Total traffic: " << total_traffic;
@@ -980,9 +979,10 @@ this->update_expected_traffic(10, mkevent());
       cout << "Updating lambda_i for instance " << 
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
-    } 
-    lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
-
+    }
+    if (diff < 0.0) continue; 
+    lambda = lambda + (.02 / (epsilon * epsilon)) * (diff);
+    //lambda = 100000.0;
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   

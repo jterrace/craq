@@ -671,7 +671,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     for (j=0; j < num_clients; j++) {
       for (k=0; k < num_clients; k++) {
         memcpy(&lambda, &sd_opt.records[i].lambda, sizeof(double));
-        temp = props[j].second * props[k].second * lambda;
+        temp = S_n * S_n * props[j].second * props[k].second * lambda;
         if (j >= k) {
           r = MSK_putqobjij(task, j * num_servers + i, 
                                   k * num_servers + i, temp);
@@ -729,7 +729,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
       if (debug) cout << "Lambda: " << lambda << " P_other: " << P_other
         << " Proportion: " << proportion << endl;
-      temp+= S_n * 2 * (P_other - proportion) * lambda;
+      temp+= S_n * 2  * props[i].second * (P_other - proportion) * lambda;
       MSK_putcj(task, i * num_servers + j, temp);
     }
   }
@@ -792,7 +792,6 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
 
   twait { this->get_opt_data(mkevent(sd_opt)); }
 
-
   update_prob = 1.0 / craq.number_of_nodes();
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
@@ -835,9 +834,10 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
       cout << "Updating lambda_i for instance " << 
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
-    } 
-    lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
-
+    }
+    if (diff < 0.0) continue; 
+    lambda = lambda + (.02 / (epsilon * epsilon)) * (diff);
+    //lambda = 100000.0;
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   
