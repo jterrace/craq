@@ -42,6 +42,7 @@ str mysql_host;
 str zoo_list;
 ofstream logfile;
 bool debug;
+bool closest_node;
 
 #define LOG_EXPIRY_MINUTES 15
 #define LOG_CLEAN_INTERVAL_MINS 15
@@ -865,8 +866,9 @@ tamed void client_debug(callback<void>::ref cb) {
       sd = const_cast<SubdomainInfo*>(&*sd_it);
       if (debug) cout <<  sd->storage.fqdn.cstr();
       // Calculate optimal routes based on external traffic
-      twait{ sd->calculate_optimal_routes(mkevent()); }
-      //twait {sd->update_expected_traffic(10, mkevent());}
+      if (!closest_node) {
+        twait{ sd->calculate_optimal_routes(mkevent()); }
+      }
       sd_it++;
     }
     next_update_interval = (update_interval - next_update_interval) + 
@@ -1257,6 +1259,7 @@ tamed static void main2(int argc, char** argv) {
   ct.add("SockPath", &sock_path);
   ct.add("MosekKeyFile", &mosek_file);
   ct.insert(New conftab_bool ("ShowDebug", &debug, true));
+  ct.insert(New conftab_bool ("ClosestNode", &closest_node, false));
   ct.insert(New conftab_int<unsigned int>
       ("MaxCacheSeconds", &max_cache_period, 0, 300, 10));
   ct.insert(New conftab_int<unsigned int>
