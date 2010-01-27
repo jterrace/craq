@@ -92,6 +92,11 @@ tamed static void main2() {
   rec.type = "A";
   sd.records.push_back(rec);
 
+  rec.content = "213.131.1.101"; // plab-1.sinp.msu.ru
+  rec.ttl = 10;
+  rec.type = "A";
+  sd.records.push_back(rec);
+
   rec.content = "138.251.214.78"; // planetlab4.cs.st-andrews.ac.uk
   rec.ttl = 10;
   rec.type = "A";

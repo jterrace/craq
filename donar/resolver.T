@@ -793,13 +793,11 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   twait { this->get_opt_data(mkevent(sd_opt)); }
 
   update_prob = 1.0 / craq.number_of_nodes();
+
   if (((double) rand() / ((double) RAND_MAX + (double) 1)) > update_prob) {
     TRIGGER(cb);
     return;
   }
-
-  TRIGGER(cb);
-  return;
 
   // Update optimization paramters
 
@@ -835,9 +833,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     }
-    if (diff < 0.0) continue; 
-    lambda = lambda + (.02 / (epsilon * epsilon)) * (diff);
-    //lambda = 100000.0;
+    lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   
