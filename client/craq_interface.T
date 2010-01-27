@@ -27,6 +27,7 @@
 #include "../logging/debug.h"
 #include "connection_pool.TH"
 #include "craq_interface.h"
+#define DEBUG 0
 
 using namespace std;
 using namespace CryptoPP;
@@ -165,7 +166,7 @@ tamed void craq_interface::set_key(string key, const char* data, int data_length
   for (int i = 0; i < data_length; i++) {
     to_write[i] = data[i];
   }
-  if (BUG) cout << "Writing " << data_length << " bytes of data.\n";
+  if (DEBUG) cout << "Writing " << data_length << " bytes of data.\n";
   wrt_arg.chain = id.get_rpc_id();
   wrt_arg.id = id.get_rpc_id();
   wrt_arg.data = to_write;
@@ -202,7 +203,7 @@ tamed void craq_interface::get_key(string key, cbs cb) {
   id = get_sha1(key);
 
   twait{ get_chain_info(id, mkevent(chain_info)); }
-  if (BUG) {
+  if (DEBUG) {
     cout << "Got chain info for key: ";
     cout << key.c_str();
     cout << "\n";
@@ -225,7 +226,7 @@ tamed void craq_interface::get_key(string key, cbs cb) {
 
   twait { get_rpc_cli (succ->second.getIp().c_str(), succ->second.getPort(),
     &cli, &chain_node_1, mkevent(fd)); }
-  if (BUG) {
+  if (DEBUG) {
     cout << "Got RPC client for node with IP: " << succ->second.getIp().c_str();
     fflush(stdout);
   }
@@ -244,7 +245,7 @@ tamed void craq_interface::get_key(string key, cbs cb) {
     TRIGGER(cb, str("ERROR"));
     return;
   }
-  if (BUG) {
+  if (DEBUG) {
     cout << "Got object of size " << ret.data.size();
     fflush(stdout);
   }
@@ -434,7 +435,7 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   }
 
   if (val == NULL) {
-    if (BUG) {
+    if (DEBUG) {
       cout << "Could not find key ";
       cout << chain_id.toString().c_str();
       cout << "\n";
@@ -449,12 +450,12 @@ tamed void craq_interface::get_chain_info(ID_Value chain_id,
   iss.str(*val);
   delete val;
   if (!(iss >> ret->chain_size)) {
-    if (BUG) cout << "Got bad value back from zookeeper chain node!\n";
+    if (DEBUG) cout << "Got bad value back from zookeeper chain node!\n";
     TRIGGER(cb, ret);
     return;
   }
   if (iss.eof()) {
-    if (BUG) {
+    if (DEBUG) {
       cout << "Got no data centers for chain: ";
       cout << chain_id.toString().c_str();
     }

@@ -661,6 +661,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
   r = MSK_initenv(env);
   r = MSK_maketask(env, num_clients, problem_size, &task);
   MSK_linkfiletotaskstream(task,MSK_STREAM_LOG,"debug.txt",0);
+  MSK_putintparam(task, MSK_IPAR_INTPNT_NUM_THREADS, 4);
   r = MSK_append(task, MSK_ACC_CON, num_clients);
   r = MSK_append(task, MSK_ACC_VAR, problem_size);
   r = MSK_putmaxnumvar(task, problem_size);
