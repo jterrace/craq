@@ -54,7 +54,10 @@ using namespace sql;
 const unsigned int MAX_BUFF = 1000;
 Connection* quova_conn;
 Connection* donar_conn;
+Driver *driver;
+
 craq_interface craq;
+unsigned int theta;
 unsigned int my_ip_addr;
 unsigned int update_interval;
 unsigned int max_cache_period;
@@ -153,6 +156,7 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     int lat_d_rounded;
     int lon_d_rounded;
     struct in_addr addr;
+    bool saw_exception;
   }
   if (debug) {
     cout << "Quova lookup requested for " << ip << endl;
@@ -165,6 +169,7 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     TRIGGER(cb, location_cache_it->second);
     return;
   }
+  saw_exception = false;
   try {
     st = quova_conn->createStatement();
     res = st->executeQuery("SELECT * FROM quova a WHERE a.start_ip_int = (\
@@ -184,8 +189,14 @@ tamed static void get_client_region(string ip, cb_cr cb) {
     lon_d = static_cast<int>(lon_f);
   } catch (sql::SQLException &e) {
     cout << "ERROR: Mysql Exception!!!\n";
+    saw_exception = true;
     lat_d = 0;
     lon_d = 0;
+  }
+  if (saw_exception) {
+   driver = get_driver_instance();
+   quova_conn = driver->connect(mysql_host.cstr(), mysql_user.cstr(),
+     mysql_pass.cstr());
   }
   // Binning
   lat_d_rounded = lat_d - (lat_d % geo_rounding);
@@ -845,7 +856,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     }
-    lambda = lambda + (1.0 / (epsilon * epsilon)) * (diff);
+    lambda = lambda + ((double) theta / (epsilon * epsilon)) * (diff);
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   
@@ -1238,7 +1249,6 @@ tamed static void listen_loop() {
 
 tamed static void main2(int argc, char** argv) {
   tvars {
-    Driver *driver;
     Statement *quova_stmt;
     bool init_success;
     int log_clean_interval;
@@ -1272,6 +1282,9 @@ tamed static void main2(int argc, char** argv) {
   ct.insert(New conftab_bool ("ClosestNode", &closest_node, false));
   ct.insert(New conftab_int<unsigned int>
       ("MaxCacheSeconds", &max_cache_period, 0, 300, 10));
+  ct.insert(New conftab_int<unsigned int>
+      ("Theta", &theta, 1, 100000, 1));
+
   ct.insert(New conftab_int<unsigned int>
       ("UpdateInterval", &update_interval, 0, 10000, 500));
  ct.insert(New conftab_int<unsigned int>

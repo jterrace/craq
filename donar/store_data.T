@@ -49,7 +49,7 @@ tamed static void main2() {
   else {
     warn << "Connection establishemnt failed.\n";
   }
-  sd.seq_number = 6;
+  sd.seq_number = 8;
   sd.fqdn = "nyud.net";
 
   rec.type = "A";
