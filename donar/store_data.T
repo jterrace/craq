@@ -16,6 +16,21 @@
 
 using namespace std;
 
+void set_attr(record_attr* att, double value) {
+  att->data.setsize(sizeof(double));
+  for (int i = 0; i < sizeof(double); i++) {
+    att->data[i] = ((char*) &value)[i];
+  }
+}
+
+double get_attr(record_attr* att) {
+  double out;
+  for (int i = 0; i < sizeof(double); i++) {
+    ((char*) &out)[i] = att->data[i];
+  }
+  return out;
+}
+
 tamed static void main2() {
   tvars{
     subdomain sd;
@@ -24,6 +39,8 @@ tamed static void main2() {
     record rec;
     record rec2;
     record rec3;
+    record_attr attr1;
+    record_attr attr2;
     record rec4;
     record rec5;
     craq_interface iface;
@@ -35,6 +52,8 @@ tamed static void main2() {
     str get_data;
     str test;
     str foo;
+    double test_val;
+    double proportion;
   }
   
   zoo_list = "ernie.cs.princeton.edu:9876";
@@ -52,54 +71,90 @@ tamed static void main2() {
   sd.seq_number = 8;
   sd.fqdn = "nyud.net";
 
-  rec.type = "A";
+  attr1.type = SPLIT_PROPORTION;
+  attr2.type = SPLIT_EPSILON;
+  set_attr(&attr2, .01);
+
+  rec.type = "A";  
   rec.content = "140.247.60.126"; // righthand.eecs.harvard.edu
   rec.ttl = 10;
+  set_attr(&attr1, .2);
+  memcpy(&test, &attr1.data, sizeof(double));
+  cout << "TEST" << get_attr(&attr1);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "134.121.64.4"; // planetlab1.eecs.wsu.edu
   rec.ttl  = 10;
   rec.type = "A";
+  set_attr(&attr1, .1);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "140.112.42.158"; //adam.ee.ntu.edu.tw
   rec.ttl  = 10;
   rec.type = "A";
+  set_attr(&attr1, .05);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "193.147.162.166"; //ait05.us.es
   rec.ttl  = 10;
   rec.type = "A";
+  set_attr(&attr1, .05);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "203.178.133.11"; //planetlab1.dojima.wide.ad.jp
   rec.ttl  = 10;
   rec.type = "A";
+  set_attr(&attr1, .05);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "137.165.1.113"; // planetlab3.williams.edu
   rec.ttl = 10;
   rec.type = "A";
+  set_attr(&attr1, .05);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "207.197.40.250"; // planetlab1.scsr.nevada.edu
   rec.ttl = 10;
   rec.type = "A";
+  set_attr(&attr1, .2);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "202.38.99.68"; // pl1.6test.edu.cn
   rec.ttl = 10;
   rec.type = "A";
+  set_attr(&attr1, .1);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "213.131.1.101"; // plab-1.sinp.msu.ru
   rec.ttl = 10;
   rec.type = "A";
+  set_attr(&attr1, .1);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
   rec.content = "138.251.214.78"; // planetlab4.cs.st-andrews.ac.uk
   rec.ttl = 10;
   rec.type = "A";
+  set_attr(&attr1, .1);
+  rec.attrs.push_back(attr1);
+  rec.attrs.push_back(attr2);
   sd.records.push_back(rec);
 
 

@@ -342,6 +342,15 @@ tamed void SubdomainInfo::set_opt_data(struct subdomain_opt sd_opt,
   TRIGGER(cb);
 }
 
+// Un-marshal RPC double
+double get_attr(record_attr* att) {
+  double out;
+  for (int i = 0; i < sizeof(double); i++) {
+    ((char*) &out)[i] = att->data[i];
+  }
+  return out;
+}
+
 // Gets optimization data from CRAQ for this subdomain. If no optimization
 // record exists in CRAQ, creates one. 
 tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
@@ -377,12 +386,10 @@ tamed void SubdomainInfo::get_opt_data(callback<void, subdomain_opt>::ref cb) {
         epsilon = .02;
         for (j=0; j < this->storage.records[i].attrs.size(); j++) {
           if (this->storage.records[i].attrs[j].type == SPLIT_PROPORTION) {
-            memcpy(&proportion, &this->storage.records[i].attrs[j].data, 
-                   sizeof(double));
+            proportion = get_attr(&this->storage.records[i].attrs[j]);
           }  
           if (this->storage.records[i].attrs[j].type == SPLIT_EPSILON) {
-            memcpy(&proportion, &this->storage.records[i].attrs[j].data,
-                   sizeof(double));
+            epsilon = get_attr(&this->storage.records[i].attrs[j]);
           } 
         }
         lambda = 1.0;
