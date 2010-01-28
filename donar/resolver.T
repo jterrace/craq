@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
+#include <math.h>
 #include <sstream>
 #include <iostream>
 #include <fstream>
@@ -738,7 +739,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         cr = props[i].first;
       distance = ((cr.lat - other.lat) * (cr.lat - other.lat)) +
         ((cr.lon - other.lon) * (cr.lon - other.lon));
-      distance_norm = (float) distance / (350 * 350);
+      distance_norm = sqrt((float) distance) / 350;
       // Add dist(c, i) * alpha_c * S_n
       temp = distance_norm * props[i].second * S_n;
       
@@ -863,11 +864,12 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     }
+    if (diff < 0.0) continue;
     lambda = lambda + (((double) theta) / (epsilon * epsilon)) * (diff);
-    if (lambda < 0.0) continue;
+    if (lambda < 0.0) lambda = 0.0;
     if (debug) cout << "New value " << lambda << "\n";
 	   
-    //memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
+    memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
   }
 
   twait { this->set_opt_data(sd_opt, mkevent()); }
