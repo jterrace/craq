@@ -863,7 +863,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
         this->storage.records[i].content.cstr() << " old value " <<
         lambda << "\n";
     }
-    lambda = lambda + ((double) theta / (epsilon * epsilon)) * (diff);
+    lambda = lambda + (((double) theta) / (epsilon * epsilon)) * (diff);
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   
