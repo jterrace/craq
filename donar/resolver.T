@@ -867,7 +867,7 @@ tamed void SubdomainInfo::calculate_optimal_routes(callback<void>::ref cb) {
     if (lambda < 0.0) continue;
     if (debug) cout << "New value " << lambda << "\n";
 	   
-    memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
+    //memcpy(&sd_opt.records[i].lambda, &lambda, sizeof(double));
   }
 
   twait { this->set_opt_data(sd_opt, mkevent()); }
