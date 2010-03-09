@@ -1,0 +1,12 @@
+AC_INIT(craq, 0.2.1)
+#first option is for making objects in subdirectories
+#second option is to suppress warnings associated with abstract build rules for taming files
+AM_INIT_AUTOMAKE([subdir-objects -Wno-portability])
+AC_PROG_CC
+AC_PROG_CXX #for c++ files
+AC_PROG_INSTALL
+AM_PROG_CC_C_O #apparently for compiling c in a subdirectory
+
+AC_CONFIG_FILES([Makefile])
+
+AC_OUTPUT

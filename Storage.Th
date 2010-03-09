@@ -1,0 +1,23 @@
+#ifndef STORAGE_H_
+#define STORAGE_H_
+#include <string>
+#include "craq_rpc.h"
+#include "ID_Value.h"
+#include "tame.h"
+
+typedef ptr<callback<void, ptr<blob> > > cb_blob;
+
+using namespace std;
+
+class Storage
+{
+	public:
+		virtual void get(ID_Value key, cb_blob, CLOSURE) = 0;
+		virtual void set(ID_Value key, const blob* data, cbb, CLOSURE) = 0;
+		virtual void add(ID_Value key, const blob* data, cbb, CLOSURE) = 0;
+		virtual void replace(ID_Value key, const blob* data, cbb, CLOSURE) = 0;
+		virtual void del(ID_Value key, cbb, CLOSURE) = 0;
+		
+};
+
+#endif /*STORAGE_H_*/

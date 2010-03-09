@@ -1,0 +1,27 @@
+#ifndef MEMSTORAGE_H_
+#define MEMSTORAGE_H_
+#include <string>
+#include <map>
+#include "Storage.h"
+#include "ID_Value.h"
+#include "craq_rpc.h"
+#include "tame.h"
+
+using namespace std;
+
+class MemStorage : public Storage
+{
+	private:
+		map<ID_Value, ptr<blob> > mem_data;
+	
+	public:
+		MemStorage(log4cpp::Appender *app);
+		virtual ~MemStorage();
+		void get(ID_Value key, cb_blob, CLOSURE);
+		void set(ID_Value key, const blob* data, cbb, CLOSURE);
+		void add(ID_Value key, const blob* data, cbb, CLOSURE);
+		void replace(ID_Value key, const blob* data, cbb, CLOSURE);
+		void del(ID_Value key, cbb, CLOSURE);
+};
+
+#endif /*MEMSTORAGE_H_*/

@@ -1,0 +1,306 @@
+#include "libconfig.h++"
+#include "logging.h"
+#include "arpc.h"
+#include "tame_aio.h"
+#include "DiskStorage.h"
+#include "tame_io.h"
+#include "async.h"
+#include <math.h>
+#include <sstream>
+#include <string>
+#include <iostream>
+
+#include "tame.h"
+#include "tame_io.h"
+#include "arpc.h"
+#include "async.h"
+#include "tame_aio.h"
+
+using namespace std;
+using namespace tame;
+
+tamed static void makeDirs(int num_hex_chars, std::string craqkey_dir) {
+	
+	tvars {
+		aiod * a;
+		int rc;
+		string name;
+		int num_folders;
+		int index;
+		int i;
+	}
+	
+	LOG_DEBUG << "make dirs";
+	
+	//create a file class
+	a = New aiod (5, 0x20000, 0x10000);
+	
+	//create the high level key directory if it doesn't exist
+	twait { a->mkdir(craqkey_dir.c_str(), 0777, mkevent(rc)); }
+	if(rc == EEXIST) {
+		LOG_DEBUG << craqkey_dir << " already exists";
+	} else if(rc != 0) {
+		LOG_ERROR << "Error when creating directory - " << rc << " - " << strerror(rc) << "\n";
+	}
+	
+	num_folders = pow(16, num_hex_chars);
+	LOG_DEBUG << "num_folders: " << num_folders;
+	for (i = 0; i < num_folders; i++) {
+		
+		name = "";
+		name += "0123456789abcdef"[i % 16];
+		for (int j = 1; j < num_hex_chars; j++) {
+			index = i / (16 * j) % 16;
+			name += "0123456789abcdef"[index];
+		}
+		
+		LOG_DEBUG << "folder name: " << name;
+		
+		//create the directory if it doesn't exist
+		twait { a->mkdir((craqkey_dir + name).c_str(), 0777, mkevent(rc)); }
+		if(rc == EEXIST) {
+			LOG_DEBUG << name << " already exists";
+		} else if(rc != 0) {
+			LOG_ERROR << "Error when creating directory - " << rc << " - " << strerror(rc) << "\n";
+		}
+		
+	}
+	
+}
+
+
+DiskStorage::DiskStorage(log4cpp::Appender *app, int num)
+{
+	LOG.setAdditivity(false);
+	LOG.setAppender(app);
+	num_hex_chars = num;
+	craqkey_dir = "/tmp/craqKeyFiles/";
+	makeDirs(num_hex_chars, craqkey_dir);
+	LOG_DEBUG << "disk storage constructor";
+}
+
+DiskStorage::~DiskStorage()
+{
+}
+
+static blob make_blob(const char * str) {
+	blob to_ret;
+        bzero(&to_ret, sizeof(blob));
+	to_ret.setsize(strlen(str));
+	for(int i=0; i<strlen(str); i++) {
+		to_ret[i] = str[i];
+	}
+	return to_ret;
+}
+
+tamed void DiskStorage::get(ID_Value key, cb_blob ret_blob) {
+	
+	tvars {
+		aiod * a;
+		int rc;
+		ptr<aiofh> fh;
+		struct stat *sb;
+		ptr<aiobuf> buf, b2;
+		bool eof;
+		off_t pos, sz;
+		ssize_t rsz;
+		ssize_t blocksz;
+		strbuf b;
+		blob value;
+	}
+
+	//amount of bytes to read from file at once
+	blocksz = 0x4000;
+
+	//create a file class
+	a = New aiod (5, 0x20000, 0x10000);
+
+	//open the file for reading
+	LOG_INFO << "file name is: " << (craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str() << "\n";
+	twait { a->open((craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str(), O_RDONLY, 0, mkevent (fh, rc)); }
+	if(rc != 0) {
+		LOG_FATAL << "could not open file\n";
+	}
+
+	//call stat to get the length
+	twait { fh->fstat(mkevent (sb, rc)); }
+	if(rc != 0) {
+		LOG_FATAL << "could not fstat\n";
+	}
+	sz = sb->st_size;
+	LOG_WARN << "size is: " << sz << "\n";
+
+	//allocate a buffer of size bufsize
+	if (!(buf = a->bufalloc (blocksz))) {
+		LOG_FATAL << "error allocating buffer\n";
+	}
+
+	eof = false;
+	pos = 0;
+	while(!eof) {
+		//read into the buffer bufsize bytes
+		twait { fh->read(pos, buf, mkevent(b2, rsz, rc)); }
+		if (rc != 0) {
+			LOG_FATAL << "Read error on file\n";
+		}
+		if (rsz < 0) {
+			LOG_FATAL << "Got unexpected failed read\n";
+		}
+		if (rsz < blocksz) {
+			eof = true;
+		}
+
+		//copy bytes read into result string
+		b.tosuio ()->copy(b2->base (), rsz);
+
+		pos += rsz;
+		if(pos >= sz) eof = true;
+	}
+
+	if (b.tosuio()->resid() != size_t(sz)) {
+		LOG_FATAL << "While reading file, I "
+		<< "exepcted " << sz << " bytes; got "
+		<< b.tosuio()->resid() << " bytes instead\n";
+	}
+
+	//close the file
+	twait { fh->close(mkevent(rc)); }
+	fh = NULL;
+
+	//print out the file
+	LOG_INFO << "file contents: " << str(b).cstr() << "\n";
+	
+	value = make_blob(str(b));
+	TRIGGER(ret_blob, New refcounted<blob>(value));
+	
+}
+
+tamed void DiskStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
+	
+	tvars {
+		aiod * a;
+		int rc;
+		ptr<aiofh> fh;
+		ptr<aiobuf> buf, b2;
+		off_t pos;
+		ssize_t blocksz, bufsz, writtensz;
+		const char *cur;
+		const char *end;
+		string dirName;
+		size_t keySize;
+	}
+
+	//amount of bytes to write to file at once
+	blocksz = 0x4000;
+
+	//create a file class
+	a = New aiod (5, 0x20000, 0x10000);
+	
+	//find directory name
+	dirName = craqkey_dir + key.toString().substr(0, num_hex_chars);
+	cur = data->base();
+	end = data->base() + data->size();
+	
+	LOG_INFO << "directory name: " << dirName << "\n";
+
+	//try to open the file for writing (and create if doesn't exist)
+	twait { a->open((dirName + "/" + key.toString()).c_str(), O_WRONLY | O_CREAT, 0777, mkevent (fh, rc)); }
+	if(rc != 0) {
+		LOG_FATAL << "could not open file for writing - " << rc << " - " << strerror(rc) << "\n";
+	}
+
+	//allocate a buffer of size bufsize
+	if (!(buf = a->bufalloc (blocksz))) {
+		LOG_FATAL << "error allocating buffer\n";
+	}
+
+	pos = 0;
+	while( cur < end ) {
+		//calculate size we're writing
+		bufsz = std::min<ssize_t>(blocksz, end-cur);
+
+		//copy from the string to the buffer
+		memcpy(buf->base(), cur, bufsz);
+
+		//write it to the file
+		twait { fh->swrite(pos, buf, 0, bufsz, mkevent(b2, writtensz, rc)); }
+		if(rc != 0) {
+			LOG_ERROR << "Error while writing to file - " << rc << " - " << strerror(rc) << "\n";
+		} else if(writtensz != bufsz) {
+			LOG_ERROR << "Tried to write " << bufsz << " but only wrote " << writtensz << "\n";
+		}
+
+		//increment by amount written
+		pos += writtensz;
+		cur += writtensz;
+	}
+
+	//close the file
+	twait { fh->close(mkevent(rc)); }
+	fh = NULL;
+
+	TRIGGER(ret_blob, true);
+	
+}
+
+tamed void DiskStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
+	
+	tvars {
+		
+		ptr<blob> get_result;
+		bool set_result;
+		
+	}
+	
+	twait { get(key, mkevent(get_result)); }
+	
+	if (get_result == NULL) {
+		twait { set(key, data, mkevent(set_result)); }
+		TRIGGER(ret_blob, set_result);
+	} else {
+		TRIGGER(ret_blob, false);
+	}
+	
+}
+
+tamed void DiskStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
+	
+	tvars {
+			
+		ptr<blob> get_result;
+		bool set_result;
+		
+	}
+	
+	twait { get(key, mkevent(get_result)); }
+	
+	if (get_result == NULL) {
+		TRIGGER(ret_blob, false);
+	} else {
+		twait { set(key, data, mkevent(set_result)); }
+		TRIGGER(ret_blob, set_result);
+	}
+	
+}
+
+
+tamed void DiskStorage::del(ID_Value key, cbb ret_bool) {
+	
+	tvars {
+		aiod * a;
+		int rc;
+	}
+
+	//create a file class
+	a = New aiod (5, 0x20000, 0x10000);
+
+	//delete the file
+	LOG_INFO << "file name to delete is: " << (craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str() << "\n";
+	twait { a->unlink((craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str(), mkevent (rc)); }
+	if(rc != 0) {
+		LOG_ERROR << "could not delete file\n";
+	}
+
+	TRIGGER(ret_bool, rc != 0);
+	
+}

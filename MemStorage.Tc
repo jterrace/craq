@@ -1,0 +1,74 @@
+#include "libconfig.h++"
+#include "logging.h"
+#include "MemStorage.h"
+
+MemStorage::MemStorage(log4cpp::Appender *app)
+{
+	LOG.setAdditivity(false);
+	LOG.setAppender(app);
+}
+
+MemStorage::~MemStorage()
+{
+}
+
+tamed void MemStorage::get(ID_Value key, cb_blob ret_blob) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it == mem_data.end()) {
+		TRIGGER(ret_blob, NULL);
+	} else {
+		TRIGGER(ret_blob, it->second);
+	}
+}
+
+tamed void MemStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars {
+		bool del_val;
+	}
+	twait { del(key, mkevent(del_val)); }
+	mem_data[key] = New refcounted<blob>(*data);
+	TRIGGER(ret_blob, true);
+}
+
+tamed void MemStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it == mem_data.end()) {
+		mem_data[key] = New refcounted<blob>(*data);
+		TRIGGER(ret_blob, true);
+	} else {
+		TRIGGER(ret_blob, false);
+	}
+}
+
+tamed void MemStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it == mem_data.end()) {
+		TRIGGER(ret_blob, false);
+	} else {
+		delete it->second;
+		mem_data[key] = New refcounted<blob>(*data);
+		TRIGGER(ret_blob, true);
+	}
+}
+
+
+tamed void MemStorage::del(ID_Value key, cbb ret_bool) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it != mem_data.end()) {
+		delete it->second;
+		mem_data.erase(key);
+	}
+	TRIGGER(ret_bool, true);
+}

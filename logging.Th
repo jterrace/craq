@@ -1,0 +1,15 @@
+#include 	"libconfig.h++"
+#include	"Category.hh"
+#include	"FileAppender.hh"
+#include	"BasicLayout.hh"
+#include	<iostream>
+
+#define LOG			log4cpp::Category::getInstance("main_cat")
+#define LOG_DEBUG	LOG << log4cpp::Priority::DEBUG
+#define LOG_INFO	LOG << log4cpp::Priority::INFO
+#define LOG_NOTICE	LOG << log4cpp::Priority::NOTICE
+#define LOG_WARN	LOG << log4cpp::Priority::WARN
+#define LOG_ERROR	LOG << log4cpp::Priority::ERROR
+#define LOG_CRIT	LOG << log4cpp::Priority::CRIT
+#define LOG_ALERT	LOG << log4cpp::Priority::ALERT
+#define LOG_FATAL	LOG << log4cpp::Priority::FATAL

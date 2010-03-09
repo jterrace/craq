@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2002-2004 The Apache Software Foundation
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<!DOCTYPE article PUBLIC "-//OASIS//DTD Simplified DocBook XML V1.0//EN"
+"http://www.oasis-open.org/docbook/xml/simple/1.0/sdocbook.dtd">
+<article id="ar_ReleaseNotes">
+  <title>ZooKeeper 3.1.1 Release Notes</title>
+
+  <articleinfo>
+    <legalnotice>
+      <para>Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License. You may
+      obtain a copy of the License at <ulink
+      url="http://www.apache.org/licenses/LICENSE-2.0">http://www.apache.org/licenses/LICENSE-2.0</ulink>.</para>
+
+      <para>Unless required by applicable law or agreed to in writing,
+      software distributed under the License is distributed on an "AS IS"
+      BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied. See the License for the specific language governing permissions
+      and limitations under the License.</para>
+    </legalnotice>
+  </articleinfo>
+
+<para>
+These release notes include new developer and user facing
+incompatibilities, features, and major improvements.
+</para>
+
+<para>
+
+</para>
+
+<para>See <ulink
+url="http://hadoop.apache.org/zookeeper/docs/r3.0.1/releasenotes.html#migration">3.0
+release notes and migration instructions</ulink> if you are upgrading
+from version 2 of ZooKeeper (SourceForge) to version 3 or
+later.</para>
+
+<section id="changes">
+<title>Changes Since ZooKeeper 3.1.0</title>
+
+<table>
+<title>Changes Since ZooKeeper 3.1.0</title>
+<tgroup cols='2'>
+<colspec colname='c1'/><colspec colname='c2'/>
+<thead>
+<row>
+  <entry>Issue</entry>
+  <entry>Notes</entry>
+</row>
+</thead>
+<tbody>
+
+    
+<row>
+  <entry>Improvement</entry>
+  <entry></entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-279">ZOOKEEPER-279</ulink></entry><entry>         Allow specialization of quorum config parsing (e.g. variable expansion in zoo.cfg)
+</entry>
+</row>
+                                
+<row>
+  <entry>Bug</entry>
+  <entry></entry>
+</row>
+<row><entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-281">ZOOKEEPER-281</ulink></entry><entry>         autoreconf fails for /zookeeper-3.0.1/src/c/
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-309">ZOOKEEPER-309</ulink></entry><entry>         core dump using zoo_get_acl() 
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-313">ZOOKEEPER-313</ulink></entry><entry>         Problem with successive leader failures when no client is connected 
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-319">ZOOKEEPER-319</ulink></entry><entry>         add locking around auth info in zhandle_t
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-320">ZOOKEEPER-320</ulink></entry><entry>         call auth completion in free_completions()
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-326">ZOOKEEPER-326</ulink></entry><entry>         standalone server ignores tickTime configuration
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-330">ZOOKEEPER-330</ulink></entry><entry>         zookeeper standalone server does not startup with just a port and datadir.
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-332">ZOOKEEPER-332</ulink></entry><entry>         c client issues (memory leaks) reported by valgrind
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-333">ZOOKEEPER-333</ulink></entry><entry>         helgrind thread issues identified in mt c client code
+</entry>
+</row>
+<row>
+<entry><ulink url="https://issues.apache.org/jira/browse/ZOOKEEPER-341">ZOOKEEPER-341</ulink></entry><entry>         regression in QuorumPeerMain, tickTime from config is lost, cannot start quorum
+</entry>
+</row>
+
+</tbody></tgroup></table>
+
+</section>
+</article>

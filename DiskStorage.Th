@@ -1,0 +1,29 @@
+#ifndef DISKSTORAGE_H_
+#define DISKSTORAGE_H_
+#include <string>
+#include <map>
+#include "Storage.h"
+#include "ID_Value.h"
+#include "craq_rpc.h"
+#include "tame.h"
+
+using namespace std;
+
+class DiskStorage : public Storage
+{
+	
+	private:
+		int num_hex_chars;
+		string craqkey_dir;
+	
+	public:
+		DiskStorage(log4cpp::Appender*, int);
+		virtual ~DiskStorage();
+		void get(ID_Value key, cb_blob, CLOSURE);
+		void set(ID_Value key, const blob* data, cbb, CLOSURE);
+		void add(ID_Value key, const blob* data, cbb, CLOSURE);
+		void replace(ID_Value key, const blob* data, cbb, CLOSURE);
+		void del(ID_Value key, cbb, CLOSURE);
+};
+
+#endif /*DISKSTORAGE_H_*/
