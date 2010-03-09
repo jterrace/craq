@@ -1,3 +1,11 @@
+0.3.x
+=====
+- Uses autotools for making
+- Uses config files for chain_node and client
+- Adding disk support
+- Uses log4cpp instead of warn/fatal/BUG
+- Added dependencies
+
 0.2.1
 =====
  - SVN Revision 1482
