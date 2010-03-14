@@ -245,12 +245,8 @@ tamed static void get_key(string key, cbblob cb) {
 	arg.chain = id.get_rpc_id();
 	arg.dirty = false; 
  
-        warn << "Reading key ";
-        warn << key.c_str();
-        warn << "\n";
-        warn << "Reading from " << succ->second.getIp().c_str();
-        warn << "\n";
-        fflush(stdout);
+    LOG_WARN << "Reading key " << key.c_str();
+    LOG_WARN << "Reading from " << succ->second.getIp().c_str();
  
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
@@ -338,9 +334,7 @@ tamed static void process(int fd)
 			if(line_len < MAX_BUF) {
 				resp.tosuio()->copyout(buff, line_len);
 				buff[line_len] = '\0';
-                                warn << "Got request ";
-                                warn << buff;
-                                warn << "\n";
+                LOG_WARN << "Got request " << buff;
 				line = buff;
 				trim(line);
 				tokens = tokenize(line);
