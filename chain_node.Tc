@@ -18,6 +18,7 @@
 #include "Node.h"
 #include "MemStorage.h"
 #include "DiskStorage.h"
+#include "HttpStorage.h"
 #include "Storage.h"
 #include "connection_pool.TH"
 #include "zookeeper.h"
@@ -2043,6 +2044,8 @@ void main2(int argc, char **argv) {
 		storage = new DiskStorage(app, num_hex_chars);
 	} else if (s_storage == "MEMORY") {
 		storage = new MemStorage(app);
+	} else if (s_storage == "HTTP") {
+		storage = new HttpStorage(app);
 	} else {
 		LOG_ERROR << "unexpected storage parameter: " << s_storage << ", defaulting to memory storage";
 		storage = new MemStorage(app);
