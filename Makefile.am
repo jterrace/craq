@@ -51,6 +51,7 @@ OBJS= craq_rpc.c \
       Node.c \
       MemStorage.c \
       DiskStorage.c \
+      HttpStorage.c \
       connection_pool.c \
       zoo_craq.c
 
@@ -104,6 +105,8 @@ MemStorage.o: MemStorage.h MemStorage.c Storage.h
 	$(CC) $(INCLUDES) $(AM_CPPFLAGS) -c MemStorage.c
 DiskStorage.o: DiskStorage.h DiskStorage.c Storage.h
 	$(CC) $(INCLUDES) $(AM_CPPFLAGS) -c DiskStorage.c
+HttpStorage.o: HttpStorage.h HttpStorage.c Storage.h
+	$(CC) $(INCLUDES) $(AM_CPPFLAGS) -c HttpStorage.c
 zoo_craq.o: zoo_craq.h zoo_craq.c
 	$(CC) $(INCLUDES) $(AM_CPPFLAGS) -c zoo_craq.c
 
@@ -137,6 +140,8 @@ BUILT_SOURCES = lib_install \
                 MemStorage.h \
                 DiskStorage.c \
                 DiskStorage.h \
+                HttpStorage.c \
+                HttpStorage.h \
                 logging.h \
                 Node.c \
                 Node.h \
@@ -148,6 +153,7 @@ BUILT_SOURCES = lib_install \
                 Node.o \
                 MemStorage.o \
                 DiskStorage.o \
+                HttpStorage.o \
                 zoo_craq.o
 
 bin_PROGRAMS = manager \
