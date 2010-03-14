@@ -1,0 +1,27 @@
+#ifndef HTTPSTORAGE_H_
+#define HTTPSTORAGE_H_
+#include <string>
+#include <map>
+#include "Storage.h"
+#include "ID_Value.h"
+#include "craq_rpc.h"
+#include "tame.h"
+
+using namespace std;
+
+class HttpStorage : public Storage
+{
+	private:
+		map<ID_Value, ptr<blob> > mem_data;
+	
+	public:
+		HttpStorage(log4cpp::Appender *app);
+		virtual ~HttpStorage();
+		void get(ID_Value key, cb_blob, CLOSURE);
+		void set(ID_Value key, const blob* data, cbb, CLOSURE);
+		void add(ID_Value key, const blob* data, cbb, CLOSURE);
+		void replace(ID_Value key, const blob* data, cbb, CLOSURE);
+		void del(ID_Value key, cbb, CLOSURE);
+};
+
+#endif /*HTTPSTORAGE_H_*/
