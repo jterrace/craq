@@ -23,7 +23,6 @@
 #include "zookeeper.h"
 #include "zoo_craq.TH"
 #include <tclap/CmdLine.h>
-#include "logging/debug.h"
 
 using namespace CryptoPP;
 using namespace std;
@@ -181,8 +180,8 @@ tamed void get_chain_info(ID_Value chain_id, ptr<callback<void, ptr<chain_meta> 
 
 	twait{ czoo_get("/keys/" + chain_id.toString(), mkevent(val)); }
 	if(val == NULL) {
-                warn << "Failed to get from zookeeper: ";
-                warn << chain_id.toString().c_str();
+		LOG_WARN << "Failed to get from zookeeper: ";
+		LOG_WARN << chain_id.toString().c_str();
 		ret = NULL;
 		TRIGGER(cb, ret);
 		return;
@@ -503,7 +502,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 	tvars {
 		tail_read_ex_arg parg;
 		tail_read_ex_ret empty;
-		const blob * repl;
+		ptr<blob> repl;
 		ID_Value id;
 		key_iter it;
 		ring_iter rit;
@@ -826,7 +825,7 @@ tamed void process_propagate(svccb * sbp) {
 	}
 	//Return false if we don't think we should be storing a replica of this key
 	if(!in_succ) {
-                warn << "Rejecting PROPOGATE since not in this datacenter";
+		LOG_WARN << "Rejecting PROPOGATE since not in this datacenter";
 		sbp->replyref(false);
 		return;
 	}
@@ -859,14 +858,14 @@ tamed void process_propagate(svccb * sbp) {
 		ring_incr(&t);
 	}
 	if(i == chain_info->chain_size-1) {
-                if (BUG) warn << "I am the tail of this chain\n";
+        LOG_WARN << "I am the tail of this chain\n";
 		wrt.is_tail = true;
-        }
+    }
 	if(i == 0)
 		wrt.is_head = true;
 	//Return false if we don't think we should be storing a replica of this key
 	if(!in_succ) {
-                if (BUG) warn << "Not storing data since not in the chain\n";
+		LOG_WARN << "Not storing data since not in the chain\n";
 		sbp->replyref(false);
 		return;
 	}
@@ -898,7 +897,7 @@ tamed void process_propagate(svccb * sbp) {
 	if(wrt.is_tail &&
 			chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
 		sbp->replyref(true);
-                if (BUG) warn << "Storing this data since I'm the tail, replied.";
+		LOG_WARN << "Storing this data since I'm the tail, replied.";
 		twait { ack(chain_id, id, mkevent(ret_val)); }
 	} else {
 		sbp->replyref(true);
@@ -1208,13 +1207,13 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 		LOG_WARN << "Propagating key of size " << arg.data.size() << "\n";
 		twait {	cli->call(PROPAGATE, &arg, &rpc_ret,  mkevent(e)); }
 		if(e) {
-                        if (BUG) warn << "Error propagating key\n";
+			LOG_WARN << "Error propagating key\n";
 			report_bad_node(succ);
 			backoff++;
 			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
-                        if (BUG) warn << "Bad return value from propogating key\n";
+			LOG_WARN << "Bad return value from propogating key\n";
 			backoff++;
 			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
 			continue;
@@ -1886,7 +1885,7 @@ register_to_manager(int my_port, string zoo_list) {
 	    }
 	    zoo_node_count = (*node_list).size();
 	    node_vals.resize((*node_list).size());
-	    //warn << "size " << (*node_list).size() << "\n";
+	    //LOG_WARN << "size " << (*node_list).size() << "\n";
 	    twait {
 		    for(i=0; i<(*node_list).size(); i++) {
 			    find = (*node_list)[i];
@@ -1905,7 +1904,7 @@ register_to_manager(int my_port, string zoo_list) {
 		    new_node.set_from_string(*node_vals[i]);
 		    ring[new_node.getId()] = new_node;
 		    zoo_nodes[(*node_list)[i]] = new_node;
-		    warn << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
+		    LOG_WARN << (*node_list)[i].c_str() << " - " << new_node.toString().c_str() << "\n";
 		    delete node_vals[i];
 	    }
 
