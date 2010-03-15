@@ -1,0 +1,131 @@
+#include "logging.h"
+#include "arpc.h"
+#include "tame_aio.h"
+#include "libconfig.h++"
+#include "HttpStorage.h"
+#include "tame.h"
+#include "tame_io.h"
+#include "async.h"
+
+
+using namespace std;
+using namespace tame;
+
+const unsigned int MAX_BUF = 128000;
+
+HttpStorage::HttpStorage(log4cpp::Appender *app)
+{
+	LOG.setAdditivity(false);
+	LOG.setAppender(app);
+}
+
+HttpStorage::~HttpStorage()
+{
+}
+
+static blob make_blob(const char * str) {
+	blob to_ret;
+        bzero(&to_ret, sizeof(blob));
+	to_ret.setsize(strlen(str));
+	for(int i=0; i<strlen(str); i++) {
+		to_ret[i] = str[i];
+	}
+	return to_ret;
+}
+
+tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
+	tvars {
+		int fd;
+		strbuf data;
+		int rc;
+		strbuf resp;
+		int line_len;
+		char buff[MAX_BUF];
+	}
+	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
+	if (fd >= 0) {
+		LOG_WARN << "Connection succeeded!\n";
+	} else {
+		LOG_FATAL << "Connection failed!\n";
+	}
+
+	data << "GET /";
+	data << key.toString().c_str();
+	data << " HTTP/1.1\r\nHost:localhost\r\n\r\n";
+	warn << "request looks like this:\n" << data << "\n";
+	while(data.tosuio()->resid()) {
+		twait { tame::waitwrite(fd, mkevent()); }
+		if(data.tosuio()->output(fd) < 0) {
+			LOG_FATAL << "error writing to socket\n";
+		}
+	}
+	
+	while(true) {
+		twait { tame::waitread (fd, mkevent()); }
+		if( (rc = resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
+			LOG_FATAL << "error reading from socket\n";
+		}
+		line_len = resp.tosuio()->linelen();
+		while(line_len > 0) {
+			if(line_len < MAX_BUF) {
+				resp.tosuio()->copyout(buff, line_len);
+				buff[line_len] = '\0';
+				resp << buff;
+			} else {
+				LOG_FATAL << "exceeded buffer\n";
+			}
+			resp.tosuio()->rembytes(line_len);
+			line_len = resp.tosuio()->linelen();
+		}
+	}
+
+}
+
+tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars {
+		bool del_val;
+	}
+	twait { del(key, mkevent(del_val)); }
+	mem_data[key] = New refcounted<blob>(*data);
+	TRIGGER(ret_blob, true);
+}
+
+tamed void HttpStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it == mem_data.end()) {
+		mem_data[key] = New refcounted<blob>(*data);
+		TRIGGER(ret_blob, true);
+	} else {
+		TRIGGER(ret_blob, false);
+	}
+}
+
+tamed void HttpStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it == mem_data.end()) {
+		TRIGGER(ret_blob, false);
+	} else {
+		delete it->second;
+		mem_data[key] = New refcounted<blob>(*data);
+		TRIGGER(ret_blob, true);
+	}
+}
+
+
+tamed void HttpStorage::del(ID_Value key, cbb ret_bool) {
+	tvars{
+		map<ID_Value, ptr<blob> >::iterator it;
+	}
+	it = mem_data.find(key);
+	if(it != mem_data.end()) {
+		delete it->second;
+		mem_data.erase(key);
+	}
+	TRIGGER(ret_bool, true);
+}
