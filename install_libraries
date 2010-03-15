@@ -37,7 +37,7 @@ export SFS_DIR="./sfslite-1.2.7"
 if [ ! -d "$SFS_BIN" ]; then
 	mkdir -p $SFS_BIN
 	cd $SFS_DIR
-	./configure --prefix=$PWD"/../"$SFS_BIN && make && make install
+	./configure --with-gmp=$PWD"/../"$GMP_BIN --prefix=$PWD"/../"$SFS_BIN && make && make install
 	cd ..
 fi
 
