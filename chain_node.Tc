@@ -143,7 +143,7 @@ str get_ip_address() {
         }
         if (addr >= addrs.lim () && (loopback == NULL))
                 LOG_FATAL << "Cannot find my IP address.\n";
-   
+
         if (touse == NULL) {
                 LOG_WARN << "Using loopback address as my address.\n";
                 touse = loopback;
@@ -987,7 +987,7 @@ tamed void process_back_propagate(svccb * sbp) {
 
 	//Update meta key
 	if(parg.committed == true) {
-		twait { storage->set(id, &parg.data, mkevent(set_succ)); }	
+		twait { storage->set(id, &parg.data, mkevent(set_succ)); }
 		wrt.committed = parg.ver;
 		if(wrt.max_pending < wrt.committed)
 			wrt.max_pending = wrt.committed;
@@ -1046,7 +1046,7 @@ tamed void process_ack(svccb * sbp) {
 	}
 
 	twait { storage->set(id, &pendit->second, mkevent(set_succ)); }
-	
+
 	if(!set_succ) {
 		sbp->replyref(false);
 		return;
@@ -1877,7 +1877,7 @@ register_to_manager(int my_port, string zoo_list) {
 	//LOG_WARN << "sleeping " << ret << "\n";
 	//delay(5000);
 	//LOG_WARN << "done sleeping\n";
-	
+
         // Allows us to re-build list if nodes change as we're building it
 	while(true) {
 	    twait { czoo_get_children("/nodes/" + datacenter, &node_list_watcher, mkevent(node_list)); }
@@ -1923,7 +1923,7 @@ static void log4cpp_init(string file, string priority) {
 
 	//below is based on example code at http://developers.sun.com/solaris/articles/logging.html
 
-	// instantiate an appender object that 
+	// instantiate an appender object that
     // will append to a log file
 	app = new log4cpp::FileAppender("FileAppender", file);
 
@@ -1933,13 +1933,13 @@ static void log4cpp_init(string file, string priority) {
 	// BasicLayout includes a time stamp
 	log4cpp::Layout *layout = new log4cpp::BasicLayout();
 
-	// 3. attach the layout object to the 
+	// 3. attach the layout object to the
 	// appender object
 	app->setLayout(layout);
 
-	// 5. Step 1 
+	// 5. Step 1
 	// an Appender when added to a category becomes
-	// an additional output destination unless 
+	// an additional output destination unless
 	// Additivity is set to false when it is false,
 	// the appender added to the category replaces
 	// all previously existing appenders
@@ -1987,56 +1987,62 @@ void main2(int argc, char **argv) {
 		TCLAP::CmdLine cmd("chain_node starts up a single chain node in CRAQ", ' ', "0.2.1");
 		//TCLAP::ValueArg<string> zooKeeperList("z", "zookeeper_list", "List of ZooKeeper nodes (ie '127.0.0.1:2000,10.0.0.1:2100')", true, "", "string", cmd);
 		//TCLAP::ValueArg<int> listenPort("p", "listen_port", "Port to listen for connections", true, 0, "int", cmd);
-		
+
 		//for some reason, things break when the line below is commented out, so we'll leave it for now
 		TCLAP::ValueArg<string> ipAddress("i", "ip_address", "IP Address to listen for connections", false, "", "string", cmd);
 		//TCLAP::SwitchArg crSwitch("c", "chain_replication", "Sets node to CR instead of CRAQ", cmd, true);
 		//TCLAP::ValueArg<string> dataCenter("d", "data_center", "Sets the data center name this node belongs to", true, "", "string", cmd);
 		TCLAP::UnlabeledValueArg<string> configFile("config_file", "Configuration file from which to read initialization parameters", true, "", "string", cmd);
 		cmd.parse(argc, argv);
-				
+
 		libconfig::Config cfg;
 		cfg.readFile(configFile.getValue().c_str());
 
 		string string_user_ip;
-		
+
 		cfg.lookupValue("node.zookeeper_list", zookeeper_list);
 		//zookeeper_list = zooKeeperList.getValue();
-		
+
 		cfg.lookupValue("node.port", listen_port);
 		//listen_port = listenPort.getValue();
-		
+
 		cfg.lookupValue("node.ip", string_user_ip);
 		user_ip = string_user_ip.c_str();
 		//user_ip = ipAddress.getValue().c_str();
-		
+
 		int int_craq;
 		cfg.lookupValue("node.cr", int_craq);
 		CRAQ = int_craq != 0;
 		//CRAQ = crSwitch.getValue();
-		
+
 		//datacenter = dataCenter.getValue();
 		cfg.lookupValue("node.datacenter", datacenter);
 
 		start_rpc_srv(listen_port);
 		register_to_manager(listen_port, zookeeper_list);
-		
+
 		cfg.lookupValue("node.storage", s_storage);
-		
+
 		cfg.lookupValue("node.disk_folder_chars", num_hex_chars);
-		
+
 		//set up logging
 		cfg.lookupValue("logging.file", log_file);
 		cfg.lookupValue("logging.min_priority", log_priority);
 		log4cpp_init(log_file, log_priority);
 		LOG_DEBUG << "logging set up";
-		
+
 	}
 	catch (TCLAP::ArgException &e)  // catch any exceptions
 	{
-		LOG_FATAL << "error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
+		fatal << "error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
 	}
-	
+	catch (libconfig::ParseException &e) {
+		fatal << "An error occured when parsing configuration file!\n"
+					<< "Error: " << e.getError() << "\n"
+					<< "File: " << e.getFile() << "\n"
+					<< "Line Number: " << e.getLine() << "\n";
+	}
+
 	//TODO make number of hex characters configurable
 	LOG_INFO << "storage type is " << s_storage;
 	if (s_storage == "DISK") {
