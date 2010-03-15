@@ -11,7 +11,7 @@
 using namespace std;
 using namespace tame;
 
-const unsigned int MAX_BUF = 128000;
+const unsigned int MAX_BUF = 4096;
 
 HttpStorage::HttpStorage(log4cpp::Appender *app)
 {
@@ -41,6 +41,12 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		strbuf resp;
 		int line_len;
 		char buff[MAX_BUF];
+		strbuf output;
+		const char *s_out;
+		char *crlf;
+		char *crlf2;
+		char *content;
+		blob value;
 	}
 	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
 	if (fd >= 0) {
@@ -70,12 +76,33 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 			if(line_len < MAX_BUF) {
 				resp.tosuio()->copyout(buff, line_len);
 				buff[line_len] = '\0';
-				resp << buff;
+				output << buff;
 			} else {
 				LOG_FATAL << "exceeded buffer\n";
 			}
 			resp.tosuio()->rembytes(line_len);
 			line_len = resp.tosuio()->linelen();
+		}
+		s_out = str(output).cstr();
+		crlf = strstr(s_out, "\r\n\r\n");
+		if (crlf == NULL) {
+			continue;
+		}
+		warn << output;
+		warn << "\nfirst crlf: " << (crlf - s_out) << "\n\n\n\n";
+		crlf2 = strstr(crlf + 4, "\r\n");
+		if (crlf2 == NULL) {
+			continue;
+		}
+		content = crlf2 + 2;
+		warn << "second crlf: " << (crlf2 - s_out) << "\n";
+		crlf += 4;
+		*crlf2 = '\0';
+		if (strlen(content) >= atoi(crlf)) {
+			content[atoi(crlf)] = '\0';
+			value = make_blob(str(content));
+			TRIGGER(ret_blob, New refcounted<blob>(value));
+			break;
 		}
 	}
 
