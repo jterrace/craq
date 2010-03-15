@@ -58,7 +58,6 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 	data << "GET /";
 	data << key.toString().c_str();
 	data << " HTTP/1.1\r\nHost:localhost\r\n\r\n";
-	warn << "request looks like this:\n" << data << "\n";
 	while(data.tosuio()->resid()) {
 		twait { tame::waitwrite(fd, mkevent()); }
 		if(data.tosuio()->output(fd) < 0) {
@@ -88,14 +87,11 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		if (crlf == NULL) {
 			continue;
 		}
-		warn << output;
-		warn << "\nfirst crlf: " << (crlf - s_out) << "\n\n\n\n";
 		crlf2 = strstr(crlf + 4, "\r\n");
 		if (crlf2 == NULL) {
 			continue;
 		}
 		content = crlf2 + 2;
-		warn << "second crlf: " << (crlf2 - s_out) << "\n";
 		crlf += 4;
 		*crlf2 = '\0';
 		if (strlen(content) >= atoi(crlf)) {
