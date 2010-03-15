@@ -106,11 +106,68 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 
 tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 	tvars {
-		bool del_val;
+		int fd;
+		strbuf request;
+		int rc;
+		strbuf resp;
+		int line_len;
+		char buff[MAX_BUF];
+		strbuf output;
+		const char *s_out;
+		char *crlf;
+		const char *start;
+		char *end;
 	}
-	twait { del(key, mkevent(del_val)); }
-	mem_data[key] = New refcounted<blob>(*data);
-	TRIGGER(ret_blob, true);
+	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
+	if (fd >= 0) {
+		LOG_WARN << "Connection succeeded!\n";
+	} else {
+		LOG_FATAL << "Connection failed!\n";
+	}
+	
+	start = data->base();
+	end = (char *) (data->base() + data->size());
+	*end = '\0';
+
+	request << "PUT /";
+	request << key.toString().c_str();
+	request << " HTTP/1.1\r\nHost:localhost\r\nContent-length: ";
+	request << data->size();
+	request << "\r\n\r\n";
+	request << start;
+	while(request.tosuio()->resid()) {
+		twait { tame::waitwrite(fd, mkevent()); }
+		if(request.tosuio()->output(fd) < 0) {
+			LOG_FATAL << "error writing to socket\n";
+		}
+	}
+	
+	while(true) {
+		twait { tame::waitread (fd, mkevent()); }
+		if( (rc = resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
+			LOG_FATAL << "error reading from socket\n";
+		}
+		line_len = resp.tosuio()->linelen();
+		while(line_len > 0) {
+			if(line_len < MAX_BUF) {
+				resp.tosuio()->copyout(buff, line_len);
+				buff[line_len] = '\0';
+				output << buff;
+			} else {
+				LOG_FATAL << "exceeded buffer\n";
+			}
+			resp.tosuio()->rembytes(line_len);
+			line_len = resp.tosuio()->linelen();
+		}
+		s_out = str(output).cstr();
+		crlf = strstr(s_out, "\r\n\r\n");
+		if (crlf == NULL) {
+			continue;
+		}
+		TRIGGER(ret_blob, strstr(s_out, "HTTP/1.1 200 OK") != NULL);
+		break;
+		
+	}
 }
 
 tamed void HttpStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
