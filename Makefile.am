@@ -135,7 +135,6 @@ BUILT_SOURCES = lib_install \
                 craq_rpc.h \
                 ID_Value.c \
                 ID_Value.h \
-                manager.c \
                 MemStorage.c \
                 MemStorage.h \
                 DiskStorage.c \
@@ -156,8 +155,7 @@ BUILT_SOURCES = lib_install \
                 HttpStorage.o \
                 zoo_craq.o
 
-bin_PROGRAMS = manager \
-               chain_node \
+bin_PROGRAMS = chain_node \
                test/manager_test \
                test/single_write_read \
                test/multi_read_write \
@@ -169,7 +167,6 @@ bin_PROGRAMS = manager \
                test/transaction_tester \
                client/client
 
-manager_SOURCES = manager.Tc $(OBJS)
 chain_node_SOURCES = chain_node.Tc $(OBJS)
 test_manager_test_SOURCES = test/manager_test.Tc $(OBJS)
 test_single_write_read_SOURCES = test/single_write_read.Tc $(OBJS)
