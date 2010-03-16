@@ -61,12 +61,12 @@ EXTRA_DIST = $(CRYPTO_PP_DIR) $(SFS_DIR) $(ZOOKEEPER_DIR) $(GMP_DIR) ./tclap ./i
 dist-hook:
 # remove .c and .h files that are automatically added
 	find $(distdir)/*.[ch] -exec rm {} \; || echo
-	find $(distdir)/client/*.[ch] -exec rm {} \; || echo
+	find $(distdir)/router/*.[ch] -exec rm {} \; || echo
 	find $(distdir)/test/*.[ch] -exec rm {} \; || echo
 	find $(distdir)/logging/*.[ch] -exec rm {} \; || echo
 #add .Tc and .Th files that are not caught automatically
 	cp -p $(srcdir)/*.T* $(distdir)
-	cp -p $(srcdir)/client/*.T* $(distdir)/client
+	cp -p $(srcdir)/router/*.T* $(distdir)/router
 	cp -p $(srcdir)/test/*.T* $(distdir)/test
 #TODO remove line below to reflect how debugging is currently done
 	cp -pR $(srcdir)/logging $(distdir)
@@ -120,14 +120,14 @@ zoo_craq.o: zoo_craq.h zoo_craq.c
 clean-local:
 	rm -f *.c *.h \
           test/*.c test/*.h \
-          client/*.c client/*.h \
+          router/*.c router/*.h \
           logging/*.c
 	
 BUILT_SOURCES = lib_install \
 				craq_rpc.o \
-				client/router.c \
-                client/craq_interface.c \
-                client/craq_interface.h \
+				router/router.c \
+                router/craq_interface.c \
+                router/craq_interface.h \
                 chain_node.c \
                 connection_pool.c \
                 connection_pool.h \
@@ -165,7 +165,7 @@ bin_PROGRAMS = chain_node \
                test/read_write \
                test/get_chain_info \
                test/transaction_tester \
-               client/router
+               router/router
 
 chain_node_SOURCES = chain_node.Tc $(OBJS)
 test_manager_test_SOURCES = test/manager_test.Tc $(OBJS)
@@ -177,4 +177,4 @@ test_single_reader_SOURCES = test/single_reader.Tc $(OBJS)
 test_read_write_SOURCES = test/read_write.Tc $(OBJS)
 test_get_chain_info_SOURCES = test/get_chain_info.Tc $(OBJS)
 test_transaction_tester_SOURCES = test/transaction_tester.Tc $(OBJS)
-client_router_SOURCES = client/router.Tc $(OBJS)
+router_router_SOURCES = router/router.Tc $(OBJS)
