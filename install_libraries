@@ -27,6 +27,11 @@ if [ ! -d "$GMP_BIN" ]; then
 	mkdir -p $GMP_BIN
 	cd $GMP_DIR
 	./configure --prefix=$PWD"/../"$GMP_BIN && make && make install
+	if [$? ne 0]; then
+		cd ..
+		rmdir $GMP_BIN
+		exit 1
+	fi
 	cd ..
 fi
 
@@ -38,6 +43,11 @@ if [ ! -d "$SFS_BIN" ]; then
 	mkdir -p $SFS_BIN
 	cd $SFS_DIR
 	./configure --with-gmp=$PWD"/../"$GMP_BIN --prefix=$PWD"/../"$SFS_BIN && make && make install
+	if [$? ne 0]; then
+		cd ..
+		rmdir $SFS_BIN
+		exit 1
+	fi
 	cd ..
 fi
 
@@ -48,10 +58,12 @@ export LOG4CPP_DIR="./log4cpp-1.0"
 if [ ! -d "$LOG4CPP_BIN" ]; then
 	mkdir -p $LOG4CPP_BIN
 	cd $LOG4CPP_DIR
-	./configure --prefix=$PWD"/../"$LOG4CPP_BIN
-	make
-	make check
-	make install
+	./configure --prefix=$PWD"/../"$LOG4CPP_BIN && make && make check && make install
+	if [$? ne 0]; then
+		cd ..
+		rmdir $LOG4CPP_BIN
+		exit 1
+	fi
 	cd ..
 fi
 
@@ -62,10 +74,12 @@ export LIBCONFIG_DIR="./libconfig-1.4.2"
 if [ ! -d "$LIBCONFIG_BIN" ]; then
 	mkdir -p $LIBCONFIG_BIN
 	cd $LIBCONFIG_DIR
-	./configure --prefix=$PWD"/../"$LIBCONFIG_BIN
-	make
-	make check
-	make install
+	./configure --prefix=$PWD"/../"$LIBCONFIG_BIN && make && make check && make install
+	if [$? ne 0]; then
+		cd ..
+		rmdir $LIBCONFIG_BIN
+		exit 1
+	fi
 	cd ..
 fi
 
