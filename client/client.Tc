@@ -712,6 +712,12 @@ tamed static void main2(int argc, char **argv) {
 	{
 		LOG_FATAL << "Error: " << e.error().c_str() << " for arg " << e.argId().c_str() << "\n";
 	}
+	catch (libconfig::ParseException &e) {
+		fatal << "An error occured when parsing configuration file!\n"
+					<< "Error: " << e.getError() << "\n"
+					<< "File: " << e.getFile() << "\n"
+					<< "Line Number: " << e.getLine() << "\n";
+	}
 
 	//datacenter = data_center.cstr();
 	LOG_WARN << "Initializing...";
