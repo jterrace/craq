@@ -12,10 +12,10 @@ using namespace std;
 class HttpStorage : public Storage
 {
 	private:
-		map<ID_Value, ptr<blob> > mem_data;
+		int port;
 	
 	public:
-		HttpStorage(log4cpp::Appender *app);
+		HttpStorage(log4cpp::Appender *app, int lighttpd_port);
 		virtual ~HttpStorage();
 		void get(ID_Value key, cb_blob, CLOSURE);
 		void set(ID_Value key, const blob* data, cbb, CLOSURE);

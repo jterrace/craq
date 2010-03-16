@@ -1954,6 +1954,7 @@ void main2(int argc, char **argv) {
 	string log_priority;
 	string s_storage;
 	int num_hex_chars;
+	int lighttpd_port;
 	str type;
 
 	try
@@ -1993,6 +1994,8 @@ void main2(int argc, char **argv) {
 		cfg.lookupValue("node.storage", s_storage);
 
 		cfg.lookupValue("node.disk_folder_chars", num_hex_chars);
+		
+		cfg.lookupValue("node.lighttpd_port", lighttpd_port);
 
 		//set up logging
 		cfg.lookupValue("logging.file", log_file);
@@ -2020,7 +2023,7 @@ void main2(int argc, char **argv) {
 	} else if (s_storage == "MEMORY") {
 		storage = new MemStorage(app);
 	} else if (s_storage == "HTTP") {
-		storage = new HttpStorage(app);
+		storage = new HttpStorage(app, lighttpd_port);
 	} else {
 		LOG_ERROR << "unexpected storage parameter: " << s_storage << ", defaulting to memory storage";
 		storage = new MemStorage(app);

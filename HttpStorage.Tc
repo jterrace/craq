@@ -13,10 +13,11 @@ using namespace tame;
 
 const unsigned int MAX_BUF = 4096;
 
-HttpStorage::HttpStorage(log4cpp::Appender *app)
+HttpStorage::HttpStorage(log4cpp::Appender *app, int lighttpd_port)
 {
 	LOG.setAdditivity(false);
 	LOG.setAppender(app);
+	port = lighttpd_port;
 }
 
 HttpStorage::~HttpStorage()
@@ -48,7 +49,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		char *content;
 		blob value;
 	}
-	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
+	twait { tcpconnect ("localhost", port, mkevent(fd)); }
 	if (fd >= 0) {
 		LOG_WARN << "Connection succeeded!\n";
 	} else {
@@ -118,7 +119,7 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 		const char *start;
 		char *end;
 	}
-	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
+	twait { tcpconnect ("localhost", port, mkevent(fd)); }
 	if (fd >= 0) {
 		LOG_WARN << "Connection succeeded!\n";
 	} else {
