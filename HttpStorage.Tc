@@ -171,41 +171,94 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 }
 
 tamed void HttpStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
-	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+	tvars {
+		
+		ptr<blob> get_result;
+		bool set_result;
+		
 	}
-	it = mem_data.find(key);
-	if(it == mem_data.end()) {
-		mem_data[key] = New refcounted<blob>(*data);
-		TRIGGER(ret_blob, true);
+	
+	twait { get(key, mkevent(get_result)); }
+	
+	if (get_result == NULL) {
+		twait { set(key, data, mkevent(set_result)); }
+		TRIGGER(ret_blob, set_result);
 	} else {
 		TRIGGER(ret_blob, false);
 	}
 }
 
 tamed void HttpStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
-	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+	tvars {
+			
+		ptr<blob> get_result;
+		bool set_result;
+		
 	}
-	it = mem_data.find(key);
-	if(it == mem_data.end()) {
+	
+	twait { get(key, mkevent(get_result)); }
+	
+	if (get_result == NULL) {
 		TRIGGER(ret_blob, false);
 	} else {
-		delete it->second;
-		mem_data[key] = New refcounted<blob>(*data);
-		TRIGGER(ret_blob, true);
+		twait { set(key, data, mkevent(set_result)); }
+		TRIGGER(ret_blob, set_result);
 	}
 }
 
 
 tamed void HttpStorage::del(ID_Value key, cbb ret_bool) {
-	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+	tvars {
+		int fd;
+		strbuf request;
+		int rc;
+		strbuf resp;
+		int line_len;
+		char buff[MAX_BUF];
+		strbuf output;
+		const char *s_out;
+		char *crlf;
 	}
-	it = mem_data.find(key);
-	if(it != mem_data.end()) {
-		delete it->second;
-		mem_data.erase(key);
+	twait { tcpconnect ("localhost", 10000, mkevent(fd)); }
+	if (fd >= 0) {
+		LOG_WARN << "Connection succeeded!\n";
+	} else {
+		LOG_FATAL << "Connection failed!\n";
 	}
-	TRIGGER(ret_bool, true);
+
+	request << "DELETE /";
+	request << key.toString().c_str();
+	request << " HTTP/1.1\r\nHost:localhost\r\n\r\n";
+	while(request.tosuio()->resid()) {
+		twait { tame::waitwrite(fd, mkevent()); }
+		if(request.tosuio()->output(fd) < 0) {
+			LOG_FATAL << "error writing to socket\n";
+		}
+	}
+	
+	while(true) {
+		twait { tame::waitread (fd, mkevent()); }
+		if( (rc = resp.tosuio()->input(fd)) < 0 && errno != EAGAIN) {
+			LOG_FATAL << "error reading from socket\n";
+		}
+		line_len = resp.tosuio()->linelen();
+		while(line_len > 0) {
+			if(line_len < MAX_BUF) {
+				resp.tosuio()->copyout(buff, line_len);
+				buff[line_len] = '\0';
+				output << buff;
+			} else {
+				LOG_FATAL << "exceeded buffer\n";
+			}
+			resp.tosuio()->rembytes(line_len);
+			line_len = resp.tosuio()->linelen();
+		}
+		s_out = str(output).cstr();
+		crlf = strstr(s_out, "\r\n\r\n");
+		if (crlf == NULL) {
+			continue;
+		}
+		TRIGGER(ret_bool, strstr(s_out, "HTTP/1.1 200 OK") != NULL);
+		break;
+	}
 }
