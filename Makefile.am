@@ -156,7 +156,6 @@ BUILT_SOURCES = lib_install \
                 zoo_craq.o
 
 bin_PROGRAMS = chain_node \
-               test/manager_test \
                test/single_write_read \
                test/multi_read_write \
                test/writer \
@@ -168,7 +167,6 @@ bin_PROGRAMS = chain_node \
                router/router
 
 chain_node_SOURCES = chain_node.Tc $(OBJS)
-test_manager_test_SOURCES = test/manager_test.Tc $(OBJS)
 test_single_write_read_SOURCES = test/single_write_read.Tc $(OBJS)
 test_multi_read_write_SOURCES = test/multi_read_write.Tc $(OBJS)
 test_writer_SOURCES = test/writer.Tc $(OBJS)
