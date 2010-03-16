@@ -125,7 +125,7 @@ clean-local:
 	
 BUILT_SOURCES = lib_install \
 				craq_rpc.o \
-				client/client.c \
+				client/router.c \
                 client/craq_interface.c \
                 client/craq_interface.h \
                 chain_node.c \
@@ -165,7 +165,7 @@ bin_PROGRAMS = chain_node \
                test/read_write \
                test/get_chain_info \
                test/transaction_tester \
-               client/client
+               client/router
 
 chain_node_SOURCES = chain_node.Tc $(OBJS)
 test_manager_test_SOURCES = test/manager_test.Tc $(OBJS)
@@ -177,4 +177,4 @@ test_single_reader_SOURCES = test/single_reader.Tc $(OBJS)
 test_read_write_SOURCES = test/read_write.Tc $(OBJS)
 test_get_chain_info_SOURCES = test/get_chain_info.Tc $(OBJS)
 test_transaction_tester_SOURCES = test/transaction_tester.Tc $(OBJS)
-client_client_SOURCES = client/client.Tc $(OBJS)
+client_router_SOURCES = client/router.Tc $(OBJS)
