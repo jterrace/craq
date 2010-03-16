@@ -29,7 +29,6 @@ using namespace CryptoPP;
 using namespace std;
 
 const unsigned int CHAIN_SIZE = 3;
-bool CRAQ;
 log4cpp::Appender *app;
 Storage * storage;
 
@@ -423,80 +422,69 @@ tamed void process_tail_read(svccb * sbp) {
 
 	it = key_meta_list.find(id);
 
-	if(CRAQ) {
+	//CRAQ tail read
 
-		//CRAQ tail read
+	if(it == key_meta_list.end() ) {
+		sbp->replyref(NULL);
+		return;
+	}
 
-		if(it == key_meta_list.end() ) {
-			sbp->replyref(NULL);
-			return;
-		}
-
-		if(it->second.committed == it->second.max_pending) {
-			LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
-			twait { storage->get(id, mkevent(repl)); }
-			sbp->replyref(*repl);
-			return;
-		} else {
-			LOG_WARN << "Dirty READ " << id.toString().c_str() << "\n";
-
-			//Find tail
-			rit = ring_succ(id);
-			for(i=0; i<CHAIN_SIZE-1; i++)
-				ring_incr(&rit);
-
-			twait { get_rpc_cli (rit->second.getIp().c_str(), rit->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-			if( fd<0 ) {
-				report_bad_node(rit->second);
-				sbp->replyref(NULL);
-				return;
-			}
-
-			//Query tail
-			twait {	cli->call(QUERY_OBJ_VER, &parg, &ret,  mkevent(e)); }
-
-			if(e) {
-				report_bad_node(rit->second);
-				sbp->replyref(NULL);
-				return;
-			} else {
-				//Refetch key
-				it = key_meta_list.find(id);
-				if(it == key_meta_list.end() ) {
-					sbp->replyref(NULL);
-					return;
-				}
-
-				//Got an ACK between call
-				if(it->second.committed == it->second.max_pending) {
-					LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
-					twait { storage->get(id, mkevent(repl)); }
-					sbp->replyref(*repl);
-					return;
-				}
-				//See if we have the version the tail would return
-				kit = it->second.pending_list.find(ret.hist);
-				if(kit == it->second.pending_list.end()) {
-					sbp->replyref(NULL);
-					return;
-				}
-				//Return tail's committed version
-				to_rep = kit->second;
-				sbp->replyref(to_rep);
-				return;
-			}
-		}
-	} else {
-		//CR Read
-		if(it == key_meta_list.end() || !(it->second).is_tail ) {
-			sbp->replyref(NULL);
-			return;
-		}
-
+	if(it->second.committed == it->second.max_pending) {
+		LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
 		twait { storage->get(id, mkevent(repl)); }
 		sbp->replyref(*repl);
+		return;
+	} else {
+		LOG_WARN << "Dirty READ " << id.toString().c_str() << "\n";
+
+		//Find tail
+		rit = ring_succ(id);
+		for(i=0; i<CHAIN_SIZE-1; i++)
+			ring_incr(&rit);
+
+		twait { get_rpc_cli (rit->second.getIp().c_str(), rit->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+		if( fd<0 ) {
+			report_bad_node(rit->second);
+			sbp->replyref(NULL);
+			return;
+		}
+
+		//Query tail
+		twait {	cli->call(QUERY_OBJ_VER, &parg, &ret,  mkevent(e)); }
+
+		if(e) {
+			report_bad_node(rit->second);
+			sbp->replyref(NULL);
+			return;
+		} else {
+			//Refetch key
+			it = key_meta_list.find(id);
+			if(it == key_meta_list.end() ) {
+				sbp->replyref(NULL);
+				return;
+			}
+
+			//Got an ACK between call
+			if(it->second.committed == it->second.max_pending) {
+				LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
+				twait { storage->get(id, mkevent(repl)); }
+				sbp->replyref(*repl);
+				return;
+			}
+			//See if we have the version the tail would return
+			kit = it->second.pending_list.find(ret.hist);
+			if(kit == it->second.pending_list.end()) {
+				sbp->replyref(NULL);
+				return;
+			}
+			//Return tail's committed version
+			to_rep = kit->second;
+			sbp->replyref(to_rep);
+			return;
+		}
 	}
+
 }
 
 tamed void process_tail_read_ex(svccb * sbp) {
@@ -532,125 +520,111 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 	it = key_meta_list.find(id);
 
-	if(CRAQ) {
+	//CRAQ tail read
 
-		//CRAQ tail read
+	if(it == key_meta_list.end() ) {
+		sbp->replyref(empty);
+		return;
+	}
 
-		if(it == key_meta_list.end() ) {
-			sbp->replyref(empty);
-			return;
-		}
-
-		if(!parg.dirty && it->second.committed == it->second.max_pending) {
-			LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
-			twait { storage->get(id, mkevent(repl)); }
-			to_rep.data = *repl;
-			to_rep.dirty = false;
-			to_rep.ver = it->second.committed;
-			sbp->replyref(to_rep);
-			return;
-		} else {
-			LOG_WARN << "Dirty READ " << id.toString().c_str() << "\n";
-
-			//lookup chain
-			chain_id.set_from_rpc(parg.chain);
-			twait{ get_chain_info(chain_id, mkevent(chain_info)); }
-			if(chain_info == NULL) {
-				LOG_FATAL << "Couldn't get chain info in read!\n";
-				sbp->replyref(empty);
-				return;
-			}
-
-			//Find tail
-			if(chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
-				rit = ring_succ(id);
-				for(i=0; i<chain_info->chain_size-1; i++)
-					ring_incr(&rit);
-				tail = rit->second;
-			} else {
-				twait { ext_ring_tail(*chain_info, id, mkevent(ext_tail)); }
-				if(ext_tail == NULL) {
-					LOG_FATAL << "Error when trying to retrieve external tail!\n";
-				}
-				tail = *ext_tail;
-			}
-
-			twait { get_rpc_cli (tail.getIp().c_str(), tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
-			if( fd<0 ) {
-				report_bad_node(tail);
-				sbp->replyref(empty);
-				return;
-			}
-
-			//Query tail
-			qry_id = id.get_rpc_id();
-			//gettimeofday(&started, NULL);
-			twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
-			/*gettimeofday(&cur_time, NULL);
-			sec_diff = cur_time.tv_sec - started.tv_sec;
-			if(sec_diff == 0) {
-				usec_diff = cur_time.tv_usec - started.tv_usec;
-			} else {
-				usec_diff = (1000000 - started.tv_usec) + cur_time.tv_usec;
-				sec_diff--;
-				sec_diff += (usec_diff / 1000000);
-				usec_diff = usec_diff % 1000000;
-			}
-			LOG_WARN << sec_diff << "\t" << usec_diff << "\n";*/
-
-			if(e) {
-				report_bad_node(rit->second);
-				sbp->replyref(empty);
-				return;
-			} else {
-				//Refetch key
-				it = key_meta_list.find(id);
-				if(it == key_meta_list.end() ) {
-					sbp->replyref(empty);
-					return;
-				}
-
-				//Got an ACK between call
-				if(it->second.committed == it->second.max_pending) {
-					LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
-					twait { storage->get(id, mkevent(repl)); }
-					to_rep.data = *repl;
-					to_rep.dirty = true;
-					to_rep.ver = it->second.committed;
-					sbp->replyref(to_rep);
-					return;
-				}
-				//See if we have the version the tail would return
-				kit = it->second.pending_list.find(ret.hist);
-				if(kit == it->second.pending_list.end()) {
-					kit = it->second.pending_list.find(it->second.max_pending); //really wrong
-					if(kit == it->second.pending_list.end()) {
-						sbp->replyref(empty);
-						return;
-					}
-				}
-				//Return tail's committed version
-				to_rep.data = kit->second;
-				to_rep.dirty = true;
-				to_rep.ver = ret.hist;
-				sbp->replyref(to_rep);
-				return;
-			}
-		}
-	} else {
-		//CR Read
-		if(it == key_meta_list.end() || !(it->second).is_tail ) {
-			sbp->replyref(empty);
-			return;
-		}
-
+	if(!parg.dirty && it->second.committed == it->second.max_pending) {
+		LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
 		twait { storage->get(id, mkevent(repl)); }
 		to_rep.data = *repl;
 		to_rep.dirty = false;
-		to_rep.ver = (it->second).committed;
+		to_rep.ver = it->second.committed;
 		sbp->replyref(to_rep);
+		return;
+	} else {
+		LOG_WARN << "Dirty READ " << id.toString().c_str() << "\n";
+
+		//lookup chain
+		chain_id.set_from_rpc(parg.chain);
+		twait{ get_chain_info(chain_id, mkevent(chain_info)); }
+		if(chain_info == NULL) {
+			LOG_FATAL << "Couldn't get chain info in read!\n";
+			sbp->replyref(empty);
+			return;
+		}
+
+		//Find tail
+		if(chain_info->data_centers[chain_info->data_centers.size()-1] == datacenter) {
+			rit = ring_succ(id);
+			for(i=0; i<chain_info->chain_size-1; i++)
+				ring_incr(&rit);
+			tail = rit->second;
+		} else {
+			twait { ext_ring_tail(*chain_info, id, mkevent(ext_tail)); }
+			if(ext_tail == NULL) {
+				LOG_FATAL << "Error when trying to retrieve external tail!\n";
+			}
+			tail = *ext_tail;
+		}
+
+		twait { get_rpc_cli (tail.getIp().c_str(), tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+
+		if( fd<0 ) {
+			report_bad_node(tail);
+			sbp->replyref(empty);
+			return;
+		}
+
+		//Query tail
+		qry_id = id.get_rpc_id();
+		//gettimeofday(&started, NULL);
+		twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
+		/*gettimeofday(&cur_time, NULL);
+		sec_diff = cur_time.tv_sec - started.tv_sec;
+		if(sec_diff == 0) {
+			usec_diff = cur_time.tv_usec - started.tv_usec;
+		} else {
+			usec_diff = (1000000 - started.tv_usec) + cur_time.tv_usec;
+			sec_diff--;
+			sec_diff += (usec_diff / 1000000);
+			usec_diff = usec_diff % 1000000;
+		}
+		LOG_WARN << sec_diff << "\t" << usec_diff << "\n";*/
+
+		if(e) {
+			report_bad_node(rit->second);
+			sbp->replyref(empty);
+			return;
+		} else {
+			//Refetch key
+			it = key_meta_list.find(id);
+			if(it == key_meta_list.end() ) {
+				sbp->replyref(empty);
+				return;
+			}
+
+			//Got an ACK between call
+			if(it->second.committed == it->second.max_pending) {
+				LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
+				twait { storage->get(id, mkevent(repl)); }
+				to_rep.data = *repl;
+				to_rep.dirty = true;
+				to_rep.ver = it->second.committed;
+				sbp->replyref(to_rep);
+				return;
+			}
+			//See if we have the version the tail would return
+			kit = it->second.pending_list.find(ret.hist);
+			if(kit == it->second.pending_list.end()) {
+				kit = it->second.pending_list.find(it->second.max_pending); //really wrong
+				if(kit == it->second.pending_list.end()) {
+					sbp->replyref(empty);
+					return;
+				}
+			}
+			//Return tail's committed version
+			to_rep.data = kit->second;
+			to_rep.dirty = true;
+			to_rep.ver = ret.hist;
+			sbp->replyref(to_rep);
+			return;
+		}
 	}
+
 }
 
 tamed void process_head_write(svccb * sbp) {
@@ -2009,11 +1983,6 @@ void main2(int argc, char **argv) {
 		cfg.lookupValue("node.ip", string_user_ip);
 		user_ip = string_user_ip.c_str();
 		//user_ip = ipAddress.getValue().c_str();
-
-		int int_craq;
-		cfg.lookupValue("node.cr", int_craq);
-		CRAQ = int_craq != 0;
-		//CRAQ = crSwitch.getValue();
 
 		//datacenter = dataCenter.getValue();
 		cfg.lookupValue("node.datacenter", datacenter);
