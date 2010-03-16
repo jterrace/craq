@@ -1,7 +1,6 @@
 #ifndef HTTPSTORAGE_H_
 #define HTTPSTORAGE_H_
-#include <string>
-#include <map>
+#include <queue>
 #include "Storage.h"
 #include "ID_Value.h"
 #include "craq_rpc.h"
@@ -13,6 +12,8 @@ class HttpStorage : public Storage
 {
 	private:
 		int port;
+		queue<int> conn_pool;
+		void getFD(cbi, CLOSURE);
 	
 	public:
 		HttpStorage(log4cpp::Appender *app, int lighttpd_port);
