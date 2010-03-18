@@ -1,0 +1,2 @@
+lighttpd.conf is the configuration file for the lighttpd server
+dp.pl should be placed in the root directory of the lighttpd server; it handles all client requests
