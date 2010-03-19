@@ -2,7 +2,6 @@
 
 use BerkeleyDB ;
 
-
 print "Content-type: text/plain\n\n";
 
 $request_method = $ENV{'REQUEST_METHOD'};
