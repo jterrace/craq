@@ -1,2 +1,5 @@
 lighttpd.conf is the configuration file for the lighttpd server
 dp.pl should be placed in the root directory of the lighttpd server; it handles all client requests
+
+assuming that 'make' has been run, the lighttpd binary used to start the server is in 
+  lighttpd_install/sbin/lighttpd
