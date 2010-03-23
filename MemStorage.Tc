@@ -67,7 +67,7 @@ tamed void MemStorage::del(ID_Value key, cbb ret_bool) {
 	}
 	it = mem_data.find(key);
 	if(it != mem_data.end()) {
-		delete it->second;
+		//delete it->second;
 		mem_data.erase(key);
 	}
 	TRIGGER(ret_bool, true);

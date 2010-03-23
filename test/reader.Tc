@@ -63,9 +63,13 @@ tamed static void read_it(key_value * to_send) {
 	arg.dirty = false;
 	gettimeofday(&started, NULL);
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
-	if(e || ret.data.size() != MESSAGE_SIZE) {
+	if(e) {
 		//fatal << "Read failed!\n";
 		warn << "Resetting\n";
+		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
+		return;
+	} else if(ret.data.size() != MESSAGE_SIZE) {
+		warn << "Bad message size\n";
 		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
 		return;
 	}
@@ -213,7 +217,7 @@ connect_to_manager(str h, int port) {
 	}
 	keys[i].tail = it->second;
 
-	twait { tcpconnect (it->second.getIp().c_str(), it->second.getPort(), mkevent(fd)); }
+	twait { tcpconnect (keys[i].head.getIp().c_str(), keys[i].head.getPort(), mkevent(fd)); }
 	if(fd < 0 ) {
 		fatal << "Error connecting to node to add chain\n";
 	}
@@ -239,8 +243,10 @@ connect_to_manager(str h, int port) {
 	wrt_arg.id =  keys[0].id.get_rpc_id();
 	wrt_arg.data =  keys[0].msg;
 	twait {	cli->call(HEAD_WRITE, &wrt_arg, &rc,  mkevent(e)); }
-	if(e || !rc) {
-		//fatal << "Initial write failed!\n";
+	if(e) {
+		fatal << "Initial write failed!\n";
+	} else if(!rc) {
+		fatal << "rc bad value: " << rc << "\n";
 	}
 
 	gettimeofday(&cur_time, NULL);

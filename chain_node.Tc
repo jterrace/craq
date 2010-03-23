@@ -646,18 +646,21 @@ tamed void process_head_write(svccb * sbp) {
 
 	twait{ get_chain_info(chain_id, mkevent(chain_info)); }
 	if(chain_info == NULL) {
+		LOG_DEBUG << "Rejecting head_write because couldn't get chain info";
 		sbp->replyref(false);
 		return;
 	}
 
 	//Reject writes unless we can form a chain
 	if(ring.size() < chain_info->chain_size) {
+		LOG_DEBUG << "Rejecting head_write because chain size > num nodes";
 		sbp->replyref(false);
 		return;
 	}
 
 	//Reject if first data center is not us
 	if(chain_info->data_centers[0] != datacenter) {
+		LOG_DEBUG << "Rejecting head_write because we are not first datacenter";
 		sbp->replyref(false);
 		return;
 	}
@@ -666,6 +669,7 @@ tamed void process_head_write(svccb * sbp) {
 
 	//If we're not the head, reject the request
 	if(it != key_meta_list.end() && !(it->second).is_head ) {
+		LOG_DEBUG << "Rejecting head_write because we are not the head 1";
 		sbp->replyref(false);
 		return;
 	}
@@ -675,6 +679,7 @@ tamed void process_head_write(svccb * sbp) {
 
 	if(it == key_meta_list.end() && !id.betweenIncl(parent_ptr->first, my_id)) {
 		//Reply false if we don't think we should be the head
+		LOG_DEBUG << "Rejecting head_write because we are not the head 2";
 		sbp->replyref(false);
 		return;
 	} else if(it == key_meta_list.end()) {
@@ -1994,7 +1999,7 @@ void main2(int argc, char **argv) {
 		cfg.lookupValue("node.storage", s_storage);
 
 		cfg.lookupValue("node.disk_folder_chars", num_hex_chars);
-		
+
 		cfg.lookupValue("node.lighttpd_port", lighttpd_port);
 
 		//set up logging
