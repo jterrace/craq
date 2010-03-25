@@ -23,7 +23,8 @@ CC=g++ -4.2
 
 
 AM_LDFLAGS =-g -O2 -Wall -Werror -Wno-unused -Wno-sign-compare \
-            -L$(LOG4CPP_BIN)/lib -L$(LIBCONFIG_BIN)/lib -L$(CRYPTO_PP_DIR)
+            -L$(LOG4CPP_BIN)/lib -L$(LIBCONFIG_BIN)/lib \
+            -L$(CRYPTO_PP_DIR) -L$(ZOOKEEPER_BIN)/lib
 AM_CPPFLAGS= $(AM_LDFLAGS) -x c++
 
 INCLUDES = -I$(SFS_INCLUDE_DIR) \
