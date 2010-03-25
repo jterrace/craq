@@ -38,6 +38,7 @@ LDADD= $(SFS_LIB_DIR)/libtame.a \
 		$(SFS_LIB_DIR)/libsfscrypt.a \
 		$(SFS_LIB_DIR)/libarpc.a \
 		$(SFS_LIB_DIR)/libasync.a \
+		$(CRYPTO_PP_DIR)/libcryptopp.a \
 		-lresolv \
 		-lcryptopp \
 		-ldl \
