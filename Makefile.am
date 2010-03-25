@@ -23,7 +23,7 @@ CC=g++ -4.2
 
 
 AM_LDFLAGS =-g -O2 -Wall -Werror -Wno-unused -Wno-sign-compare \
-            -L$(LOG4CPP_BIN)/lib -L$(LIBCONFIG_BIN)/lib
+            -L$(LOG4CPP_BIN)/lib -L$(LIBCONFIG_BIN)/lib -L$(CRYPTO_PP_DIR)
 AM_CPPFLAGS= $(AM_LDFLAGS) -x c++
 
 INCLUDES = -I$(SFS_INCLUDE_DIR) \
@@ -38,7 +38,6 @@ LDADD= $(SFS_LIB_DIR)/libtame.a \
 		$(SFS_LIB_DIR)/libsfscrypt.a \
 		$(SFS_LIB_DIR)/libarpc.a \
 		$(SFS_LIB_DIR)/libasync.a \
-		$(CRYPTO_PP_DIR)/libcryptopp.a \
 		-lresolv \
 		-lcryptopp \
 		-ldl \
