@@ -43,7 +43,7 @@ tamed static void makeDirs(int num_hex_chars, std::string craqkey_dir) {
 		LOG_ERROR << "Error when creating directory - " << rc << " - " << strerror(rc) << "\n";
 	}
 	
-	num_folders = pow(16, num_hex_chars);
+	num_folders = (int) pow(16, num_hex_chars);
 	LOG_DEBUG << "num_folders: " << num_folders;
 	for (i = 0; i < num_folders; i++) {
 		
