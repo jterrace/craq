@@ -17,6 +17,7 @@ class Storage
 		virtual void add(ID_Value key, const blob* data, cbb, CLOSURE) = 0;
 		virtual void replace(ID_Value key, const blob* data, cbb, CLOSURE) = 0;
 		virtual void del(ID_Value key, cbb, CLOSURE) = 0;
+		virtual ~Storage() = 0;
 		
 };
 
