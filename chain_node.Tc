@@ -20,9 +20,9 @@
 #include "DiskStorage.h"
 #include "HttpStorage.h"
 #include "Storage.h"
-#include "connection_pool.TH"
+#include "connection_pool.Th"
 #include "zookeeper.h"
-#include "zoo_craq.TH"
+#include "zoo_craq.Th"
 #include <tclap/CmdLine.h>
 
 using namespace CryptoPP;
@@ -1180,7 +1180,7 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 		if( fd<0 ) {
 			report_bad_node(succ);
 			backoff++;
-			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
+			twait { delaycb (0, (u_int32_t) (.5 * 1000000000 * backoff), mkevent ()); }
 			continue;
 		}
 
@@ -1190,12 +1190,12 @@ tamed void propagate(ID_Value chain_id, ID_Value id, bool send_committed, cbb cb
 			LOG_WARN << "Error propagating key\n";
 			report_bad_node(succ);
 			backoff++;
-			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
+			twait { delaycb (0, (u_int32_t) (.5 * 1000000000 * backoff), mkevent ()); }
 			continue;
 		} else if(!rpc_ret) {
 			LOG_WARN << "Bad return value from propogating key\n";
 			backoff++;
-			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
+			twait { delaycb (0, (u_int32_t) (.5 * 1000000000 * backoff), mkevent ()); }
 			continue;
 		}
 
@@ -1274,7 +1274,7 @@ tamed void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, c
 		if( fd<0 ) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
+			twait { delaycb (0, (u_int32_t) (.5 * 1000000000 * backoff), mkevent ()); }
 			continue;
 		}
 
@@ -1282,7 +1282,7 @@ tamed void back_propagate(ID_Value chain_id, ID_Value id, bool send_committed, c
 		if(e || !rpc_ret) {
 			report_bad_node(pred->second);
 			backoff++;
-			twait { delaycb (0, .5 * 1000000000 * backoff, mkevent ()); }
+			twait { delaycb (0, (u_int32_t) (.5 * 1000000000 * backoff), mkevent ()); }
 			continue;
 		}
 
