@@ -10,7 +10,7 @@
 #include "../craq_rpc.h"
 #include "../Node.h"
 #include "../ID_Value.h"
-#include "../connection_pool.TH"
+#include "../connection_pool.Th"
 
 using namespace CryptoPP;
 using namespace std;
