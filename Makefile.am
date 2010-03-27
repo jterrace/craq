@@ -19,7 +19,7 @@ LIBCONFIG_BIN = ./libconfig_install
 
 GMP_DIR = ./gmp-4.3.1
 
-CC=g++ -4.2
+CC=g++
 
 
 AM_LDFLAGS =-g -O2 -Wall -Werror -Wno-unused -Wno-sign-compare \
