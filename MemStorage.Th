@@ -11,10 +11,13 @@ using namespace std;
 
 class MemStorage : public Storage
 {
-	private:
-		map<ID_Value, ptr<blob> > mem_data;
-	
 	public:
+		struct mem_type {
+			unsigned int len;
+			unsigned char * data;
+		};
+		typedef map<ID_Value, mem_type>::iterator mem_it;
+
 		MemStorage(log4cpp::Appender *app);
 		virtual ~MemStorage();
 		void get(ID_Value key, cb_blob, CLOSURE);
@@ -22,6 +25,9 @@ class MemStorage : public Storage
 		void add(ID_Value key, const blob* data, cbb, CLOSURE);
 		void replace(ID_Value key, const blob* data, cbb, CLOSURE);
 		void del(ID_Value key, cbb, CLOSURE);
+
+	private:
+		map<ID_Value, mem_type > mem_data;
 };
 
 #endif /*MEMSTORAGE_H_*/

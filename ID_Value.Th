@@ -24,7 +24,7 @@ public:
 	bool isNull();
 	void setNull();
 	void randomize();
-	rpc_hash get_rpc_id();
+	rpc_hash get_rpc_id() const;
 	void set_from_rpc(rpc_hash newid);
 	bool between(ID_Value x, ID_Value y) const;
 	bool betweenIncl(ID_Value x, ID_Value y) const;
@@ -34,6 +34,7 @@ public:
 	bool operator >  (const ID_Value &other) const;
 	bool operator <= (const ID_Value &other) const;
 	bool operator >= (const ID_Value &other) const;
+	ID_Value & operator ++ ();
 };
 
 #endif

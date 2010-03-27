@@ -14,32 +14,48 @@ MemStorage::~MemStorage()
 
 tamed void MemStorage::get(ID_Value key, cb_blob ret_blob) {
 	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+		MemStorage::mem_it it;
+		ptr<blob> ret_b;
+		blob to_ret;
+		u_int i;
 	}
 	it = mem_data.find(key);
 	if(it == mem_data.end()) {
 		TRIGGER(ret_blob, NULL);
 	} else {
-		TRIGGER(ret_blob, it->second);
+		to_ret.setsize(it->second.len);
+		for(i=0; i<it->second.len; i++) {
+			to_ret[i] = it->second.data[i];
+		}
+		ret_b = New refcounted<blob>(to_ret);
+		TRIGGER(ret_blob, ret_b);
 	}
 }
 
 tamed void MemStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 	tvars {
 		bool del_val;
+		MemStorage::mem_type to_add;
+		u_int i;
 	}
 	twait { del(key, mkevent(del_val)); }
-	mem_data[key] = New refcounted<blob>(*data);
+	to_add.len = data->size();
+	to_add.data = new unsigned char[to_add.len];
+	for(i=0; i<to_add.len; i++) {
+		to_add.data[i] = (*data)[i];
+	}
+	mem_data[key] = to_add;
 	TRIGGER(ret_blob, true);
 }
 
 tamed void MemStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
 	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+		MemStorage::mem_it it;
+		bool set_val;
 	}
 	it = mem_data.find(key);
 	if(it == mem_data.end()) {
-		mem_data[key] = New refcounted<blob>(*data);
+		twait { set(key, data, mkevent(set_val)); }
 		TRIGGER(ret_blob, true);
 	} else {
 		TRIGGER(ret_blob, false);
@@ -48,14 +64,14 @@ tamed void MemStorage::add(ID_Value key, const blob* data, cbb ret_blob) {
 
 tamed void MemStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
 	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+		MemStorage::mem_it it;
+		bool set_val;
 	}
 	it = mem_data.find(key);
 	if(it == mem_data.end()) {
 		TRIGGER(ret_blob, false);
 	} else {
-		delete it->second;
-		mem_data[key] = New refcounted<blob>(*data);
+		twait { set(key, data, mkevent(set_val)); }
 		TRIGGER(ret_blob, true);
 	}
 }
@@ -63,11 +79,11 @@ tamed void MemStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
 
 tamed void MemStorage::del(ID_Value key, cbb ret_bool) {
 	tvars{
-		map<ID_Value, ptr<blob> >::iterator it;
+		MemStorage::mem_it it;
 	}
 	it = mem_data.find(key);
 	if(it != mem_data.end()) {
-		//delete it->second;
+		delete it->second.data;
 		mem_data.erase(key);
 	}
 	TRIGGER(ret_bool, true);

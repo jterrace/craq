@@ -23,7 +23,6 @@ ID_Value::~ID_Value() {
 }
 
 void ID_Value::randomize() {
-	srand(time(NULL));
 	for(int i=0; i<20; i++)
 		id[i] = rand() % 256;
 	null = false;
@@ -70,7 +69,7 @@ string ID_Value::toString() const {
 	return ret;
 }
 
-rpc_hash ID_Value::get_rpc_id() {
+rpc_hash ID_Value::get_rpc_id() const {
 	//this function is fucked up
 	//mstr m(20);
 	vec<char> m;
@@ -141,3 +140,16 @@ bool ID_Value::operator >  (const ID_Value &other) const {
 bool ID_Value::operator <= (const ID_Value &other) const { return !(*this >  other); }
 bool ID_Value::operator >= (const ID_Value &other) const { return !(*this <  other); }
 bool ID_Value::operator != (const ID_Value &other) const { return !(*this == other); }
+
+ID_Value & ID_Value::operator ++ () {
+	unsigned int i = 20;
+	do {
+		i--;
+		if(id[i] == 255) {
+			id[i] = 0;
+		} else {
+			id[i]++;
+		}
+	} while(i > 0 && id[i] == 0);
+	return *this;
+}
