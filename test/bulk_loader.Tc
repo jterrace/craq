@@ -36,21 +36,6 @@ struct key_value {
 	ring_iter head_it;
 };
 
-struct mem_type2 {
-	unsigned int len;
-	unsigned char * data;
-};
-
-struct key_meta2 {
-	unsigned int committed;
-	unsigned int max_pending;
-	map<int, blob> pending_list;
-	map<int, deque<svccb *> > write_reqs;
-	bool is_head;
-	bool is_tail;
-	ID_Value chain_id;
-};
-
 map<ID_Value, Node> ring;
 
 ring_iter ring_succ(ID_Value id) {
@@ -129,7 +114,7 @@ tamed static void write_it(const key_value * to_send, cbb cbret) {
 
 }
 
-tamed static void read_it(key_value * to_send) {
+tamed static void read_it(const key_value * to_send, cbb cbret) {
 	tvars {
 		int fd, fd2, i;
 		ptr<axprt_stream> x;
@@ -145,33 +130,25 @@ tamed static void read_it(key_value * to_send) {
 		tail_read_ex_ret ret;
 	}
 
-	/*twait { get_rpc_cli (to_send->head.getIp().c_str(),to_send->head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
+	twait { get_rpc_cli (to_send->head_it->second.getIp().c_str(),to_send->head_it->second.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
+		TRIGGER(cbret, false);
 		return;
 	}
 	arg.id = to_send->id.get_rpc_id();
 	arg.chain = to_send->chain_id.get_rpc_id();
 	arg.dirty = false;
+
 	gettimeofday(&started, NULL);
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
-		//fatal << "Read failed!\n";
-		warn << "Resetting\n";
-		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
-		return;
+		fatal << "Read failed!\n";
 	} else if(ret.data.size() != MESSAGE_SIZE) {
-		warn << "Bad message size\n";
-		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
-		return;
+		fatal << "Bad message size\n";
 	}
 
 	gettimeofday(&cur_time, NULL);
-	if(ret.dirty) {
-		warn << "D\t";
-	} else {
-		warn << "R\t";
-	}
-	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
+	//warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\t";
 	sec_diff = cur_time.tv_sec - started.tv_sec;
 	if(sec_diff == 0) {
 		usec_diff = cur_time.tv_usec - started.tv_usec;
@@ -181,9 +158,8 @@ tamed static void read_it(key_value * to_send) {
 		sec_diff += (usec_diff / 1000000);
 		usec_diff = usec_diff % 1000000;
 	}
-	warn << sec_diff << "\t" << usec_diff << "\n";
-	return;*/
-
+	warn << sec_diff << "\t" << usec_diff << "\t";
+	TRIGGER(cbret, true);
 }
 
 ID_Value get_sha1(string msg)
@@ -233,7 +209,7 @@ connect_to_manager(str h, int port) {
 		blob rd_ret;
 		bool eqs;
 		key_value key_val;
-		timeval cur_time, start_time, last_time;
+		timeval cur_time, start_time, last_time, started;
 		rendezvous_t<u_int, ptr<bool> > rv;
 		ptr<bool> res;
 		double persec;
@@ -320,10 +296,34 @@ connect_to_manager(str h, int port) {
 
 	for(i=0; i<NUM_OBJS; i++) {
 		if(i % VERIFY_EVERY == 0) {
-			warn << "Success writing " << i << " objects so far, current is " << key_val.id.toString().c_str() << "\n";
+
+			gettimeofday(&started, NULL);
+
+			twait { write_it(&key_val, mkevent(rc)); }
+
+			gettimeofday(&cur_time, NULL);
+			sec_diff = cur_time.tv_sec - started.tv_sec;
+			if(sec_diff == 0) {
+				usec_diff = cur_time.tv_usec - started.tv_usec;
+			} else {
+				usec_diff = (1000000 - started.tv_usec) + cur_time.tv_usec;
+				sec_diff--;
+				sec_diff += (usec_diff / 1000000);
+				usec_diff = usec_diff % 1000000;
+			}
+
+			warn << i << "\t" << key_val.id.toString().c_str() << "\t";
+			warn << sec_diff << "\t" << usec_diff << "\t";
+			twait { read_it(&key_val, mkevent(rc)); }
+			warn << "\n";
+			if(!rc) {
+				fatal << "bad read\n";
+			}
+		} else {
+			twait { write_it(&key_val, mkevent(rc)); }
 		}
-		twait { write_it(&key_val, mkevent(rc)); }
 		++(key_val.id);
+		key_val.head_it = ring_succ(key_val.id);
 	}
 
 	exit(0);
@@ -336,31 +336,6 @@ void main2(int argc, char **argv) {
 		string manager_hostname;
 		int manager_port;
 	}
-
-	map<ID_Value, key_meta2> blah;
-	map<ID_Value, mem_type2> blah2;
-
-	srand(time(NULL));
-
-	for(u_int i=0; i<1000000; i++) {
-		ID_Value x;
-		x.randomize();
-		key_meta2 y;
-		mem_type2 z;
-		y.is_head = false;
-		z.len = 0;
-		z.data = new unsigned char[50];
-		blah[x] = y;
-		blah2[x] = z;
-	}
-
-	warn << blah.size() << "\n";
-	warn << blah2.size() << "\n";
-
-	while(1) {
-
-	}
-	exit(0);
 
 	try
 	{
