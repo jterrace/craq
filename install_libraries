@@ -58,7 +58,12 @@ export LOG4CPP_DIR="./log4cpp-1.0"
 if [ ! -d "$LOG4CPP_BIN" ]; then
 	mkdir -p $LOG4CPP_BIN
 	cd $LOG4CPP_DIR
-	./configure --prefix=$PWD"/../"$LOG4CPP_BIN && make && make check && make install
+	./configure --prefix=$PWD"/../"$LOG4CPP_BIN
+	if [ $? -ne 0 ]; then
+		echo "WARNING: configuring log4cpp returned non-zero status"
+		echo "If the error states: \"rm: conftest.dSYM: is a directory\" you can safely ignore it"
+	fi
+	make && make check && make install
 	if [ $? -ne 0 ]; then
 		cd ..
 		rmdir $LOG4CPP_BIN
