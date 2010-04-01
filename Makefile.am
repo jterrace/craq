@@ -43,8 +43,8 @@ LDADD= $(SFS_LIB_DIR)/libtame.a \
 		-lcryptopp \
 		-ldl \
 		-lzookeeper_st \
-		-lpthread \
 		-llog4cpp \
+		-lpthread \
 		-lconfig++
 	
 OBJS= craq_rpc.c \
