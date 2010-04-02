@@ -60,7 +60,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		int line_len;
 		char buff[MAX_BUF];
 		strbuf output;
-		const char *s_out;
+		char *s_out;
 		char *crlf;
 		char *crlf2;
 		char *content;
@@ -115,7 +115,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 				resp.tosuio()->rembytes(line_len);
 				line_len = resp.tosuio()->linelen();
 			}
-			s_out = str(output).cstr();
+			s_out = (char *) str(output).cstr();
 			httpHeader = strstr(s_out, "HTTP/1.1");
 			if (httpHeader == NULL) {
 				continue;
@@ -203,7 +203,7 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 				line_len = resp.tosuio()->linelen();
 			}
 			s_out = str(output).cstr();
-			crlf = strstr(s_out, "\r\n\r\n");
+			crlf = (char *) strstr(s_out, "\r\n\r\n");
 			if (crlf == NULL) {
 				continue;
 			}
@@ -303,7 +303,7 @@ tamed void HttpStorage::del(ID_Value key, cbb ret_bool) {
 				line_len = resp.tosuio()->linelen();
 			}
 			s_out = str(output).cstr();
-			crlf = strstr(s_out, "\r\n\r\n");
+			crlf = (char *) strstr(s_out, "\r\n\r\n");
 			if (crlf == NULL) {
 				continue;
 			}
