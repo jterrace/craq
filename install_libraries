@@ -121,8 +121,20 @@ if [ ! -d "$BDB_BIN" ]; then
 fi
 
 cd $BDB_DIR/perl/BerkeleyDB
-perl Makefile.PL && make
+if [ ! -e "Makefile" ]; then
+	perl Makefile.PL
+	if [ $? -ne 0 ]; then
+        	exit 1
+	fi
+fi
+make
 if [ $? -ne 0 ]; then
 	exit 1
 fi
 
+export db=$PWD
+cd ../../..
+cd lighttpd_files
+echo "#!/bin/bash" > perl_wrapper
+echo "perl -I$db -I$db/blib/arch/auto/BerkeleyDB \$1" >> perl_wrapper
+chmod 0755 perl_wrapper
