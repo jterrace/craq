@@ -117,6 +117,12 @@ if [ ! -d "$BDB_BIN" ]; then
 		rmdir $LIGHTTPD_BIN
 		exit 1
 	fi
-	cd ..
+	cd ../..
+fi
+
+cd $BDB_DIR/perl/BerkeleyDB
+perl Makefile.PL && make && make install
+if [ $? -ne 0 ]; then
+	exit 1
 fi
 
