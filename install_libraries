@@ -111,7 +111,7 @@ export BDB_DIR="./db-5.0.21"
 if [ ! -d "$BDB_BIN" ]; then
 	mkdir -p $BDB_BIN
 	cd $BDB_DIR/build_unix
-	../dist/configure --prefix=$PWD"/../../"$LIGHTTPD_BIN && make && make install
+	../dist/configure --prefix=$PWD"/../../"$BDB_BIN && make && make install
 	if [ $? -ne 0 ]; then
 		cd ../..
 		rmdir $LIGHTTPD_BIN
