@@ -1,5 +1,7 @@
 lighttpd.conf is the configuration file for the lighttpd server
 dp.pl should be placed in the root directory of the lighttpd server; it handles all client requests
+perl_wrapper is the call to perl to handle requests from craq; it points to Berkeley DB libraries
+  and therefore might need to be adjusted to compile on your machine
 
 assuming that 'make' has been run, the lighttpd binary used to start the server is in 
   lighttpd_install/sbin/lighttpd
