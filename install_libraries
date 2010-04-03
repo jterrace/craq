@@ -104,3 +104,19 @@ if [ ! -d "$LIGHTTPD_BIN" ]; then
 	cd ..
 fi
 
+#bdb
+export BDB_BIN="./bdb_install"
+export BDB_DIR="./db-5.0.21"
+
+if [ ! -d "$BDB_BIN" ]; then
+	mkdir -p $BDB_BIN
+	cd $BDB_DIR/build_unix
+	../dist/configure --prefix=$PWD"/../../"$LIGHTTPD_BIN && make && make install
+	if [ $? -ne 0 ]; then
+		cd ../..
+		rmdir $LIGHTTPD_BIN
+		exit 1
+	fi
+	cd ..
+fi
+
