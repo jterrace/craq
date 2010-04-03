@@ -114,7 +114,7 @@ if [ ! -d "$BDB_BIN" ]; then
 	../dist/configure --prefix=$PWD"/../../"$BDB_BIN && make && make install
 	if [ $? -ne 0 ]; then
 		cd ../..
-		rmdir $LIGHTTPD_BIN
+		rmdir $BDB_BIN
 		exit 1
 	fi
 	cd ../..
