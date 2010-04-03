@@ -121,7 +121,7 @@ if [ ! -d "$BDB_BIN" ]; then
 fi
 
 cd $BDB_DIR/perl/BerkeleyDB
-perl Makefile.PL && make && make install
+perl Makefile.PL && make
 if [ $? -ne 0 ]; then
 	exit 1
 fi
