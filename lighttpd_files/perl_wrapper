@@ -1,2 +1,0 @@
-#!/bin/bash
-perl -I/home/rucinski/db-5.0.21/perl/BerkeleyDB -I/home/rucinski/db-5.0.21/perl/BerkeleyDB/blib/arch/auto/BerkeleyDB $1
