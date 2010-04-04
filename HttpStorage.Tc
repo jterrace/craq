@@ -122,14 +122,14 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 				line_len = resp.tosuio()->linelen();
 			}
 			s_out = (char *) str(output).cstr();
-			if ((prev_size == strlen(s_out) && prev_size == 5) || (strlen(s_out) <= 0)) {
+			if ((prev_size == strlen(s_out)) || (strlen(s_out) <= 0)) {
 				count++;
 			} else {
 				count = 0;
 				prev_size = strlen(s_out);
 			}
 			if (count > 10) {
-				cout << "preemptive return\n";
+				LOG_DEBUG << "preemptive return\n";
 				break;
 			}
 			httpHeader = strstr(s_out, "HTTP/1.1");
