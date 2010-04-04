@@ -9,43 +9,31 @@ $request_uri = substr($ENV{'REQUEST_URI'}, 1);
 $content_length = $ENV{'CONTENT_LENGTH'};
 
 my $filename = "database";
-
-if (!(-e $filename)) {
-	exec('>' . $filename);	
-}
+my $errorlog = "dberror";
 
 if ($request_method eq 'GET') {
-	
-	my %hash;
-	tie %hash, 'BerkeleyDB::Hash',
-	            -Filename  => $filename,
-	            -Flags     => DB_RDONLY
-	    or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
-	
-	print $hash{$request_uri};
-	untie %hash ;
+
+	$db = new BerkeleyDB::Hash( -Filename => $filename,
+				    -Flags => DB_RDONLY) or die "Cannot open file $filename";
+	$db->db_get($request_uri, $val);
+	print $val;	
 	
 } elsif ($request_method eq 'PUT') {
 	
 	read(STDIN, $buffer, $content_length);
-	my %hash ;
-	tie %hash, 'BerkeleyDB::Hash',
-	            -Filename  => $filename
-	    or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
-	
-	$hash{$request_uri} = $buffer;
-	untie %hash ;
+	if (!(-e $filename)) {
+		$db = new BerkeleyDB::Hash( -Filename => $filename,
+					    -Flags => DB_CREATE) or die "Cannot open file $filename";
+        } else {
+		$db = new BerkeleyDB::Hash( -Filename => $filename) or die "Cannot open file $filename";
+	}
+	$db->db_put($request_uri, $buffer);
 	
 } elsif ($request_method eq 'DELETE') {
-	
-	my %hash;
-	tie %hash, 'BerkeleyDB::Hash',
-	            -Filename  => $filename
-	    or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
-	
-	$hash{$request_uri} = '';
-	untie %hash ;
+
+	$db = new BerkeleyDB::Hash( -Filename => $filename) or die "Cannot open file $filename";
+        $db->db_del($request_uri);
 	
 } else {
-	print 'unrecognized request method: ' . $request_method;
+	exec('echo ' . '"unrecognized request method: ' . $request_method . '" > ' . $errorlog);
 }
