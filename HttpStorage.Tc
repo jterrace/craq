@@ -32,10 +32,12 @@ tamed void HttpStorage::getFD(cbi ret_int) {
 	
 	if (conn_pool.empty()) {
 		twait { tcpconnect ("localhost", port, mkevent(fd)); }
+		LOG_DEBUG << "fd: " << fd << "\n";
 		TRIGGER(ret_int, fd);
 	} else {
 		fd = conn_pool.front();
 		conn_pool.pop();
+		LOG_DEBUG << "fd: " << fd << "\n";
 		TRIGGER(ret_int, fd);
 	}
 	
@@ -66,12 +68,16 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		char *content;
 		char *httpHeader;
 		blob value;
+		int prev_size;
+		int count;
 	}
 	
+	prev_size = 0;
+	count = 0;
+
 	//attempt to connect to the server over and over again until we succeed
 	//the only reason we might not is that the file descriptor is expired
 	while (true) {
-		
 		//get a new file descriptor
 		twait { getFD (mkevent(fd)); }
 		if (fd >= 0) {
@@ -116,17 +122,27 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 				line_len = resp.tosuio()->linelen();
 			}
 			s_out = (char *) str(output).cstr();
+			if ((prev_size == strlen(s_out) && prev_size == 5) || (strlen(s_out) <= 0)) {
+				count++;
+			} else {
+				count = 0;
+				prev_size = strlen(s_out);
+			}
+			if (count > 10) {
+				cout << "preemptive return\n";
+				break;
+			}
 			httpHeader = strstr(s_out, "HTTP/1.1");
 			if (httpHeader == NULL) {
 				continue;
 			}
 			crlf = strstr(httpHeader, "\r\n\r\n");
 			if (crlf == NULL) {
-				continue;
+ 				continue;
 			}
 			crlf2 = strstr(crlf + 4, "\r\n");
 			if (crlf2 == NULL) {
-				continue;
+                                continue;
 			}
 			content = crlf2 + 2;
 			crlf += 4;
@@ -204,7 +220,9 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 			}
 			s_out = str(output).cstr();
 			crlf = (char *) strstr(s_out, "\r\n\r\n");
-			if (crlf == NULL) {
+			if (crlf == NULL && strlen(s_out) > 0) {
+				cout << "crlf == NULL\n";
+				cout << s_out << "\n";
 				continue;
 			}
 			conn_pool.push(fd);
@@ -304,7 +322,7 @@ tamed void HttpStorage::del(ID_Value key, cbb ret_bool) {
 			}
 			s_out = str(output).cstr();
 			crlf = (char *) strstr(s_out, "\r\n\r\n");
-			if (crlf == NULL) {
+			if (crlf == NULL && strlen(s_out) > 0) {
 				continue;
 			}
 			conn_pool.push(fd);
