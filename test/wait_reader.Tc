@@ -21,6 +21,7 @@ using namespace std;
 int NUM_SECS;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
+timeval START;
 vector<string> DATA_CENTERS;
 string CHAIN_NAME;
 string KEY_NAME;
@@ -36,6 +37,12 @@ struct key_value {
 };
 
 map<ID_Value, Node> ring;
+
+double time_diff( timeval first, timeval second ) {
+	double sec_diff = second.tv_sec - first.tv_sec;
+	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
+	return sec_diff;
+}
 
 tamed static void read_it(key_value * to_send) {
 	tvars {
@@ -61,7 +68,7 @@ tamed static void read_it(key_value * to_send) {
 	arg.chain = to_send->chain_id.get_rpc_id();
 	arg.dirty = false;
 	gettimeofday(&started, NULL);
-	cli->call(TAIL_READ_EX, &arg, &ret, e);
+	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 	if(e) {
 		//fatal << "Read failed!\n";
 		warn << "Resetting\n";
@@ -90,7 +97,12 @@ tamed static void read_it(key_value * to_send) {
 		usec_diff = usec_diff % 1000000;
 	}
 	warn << sec_diff << "\t" << usec_diff << "\n";
-	return;
+	
+	if ( time_diff(START, cur_time) < NUM_SECS ) {
+		read_it(to_send);
+	} else {
+		exit(0);
+	}
 
 }
 
@@ -112,12 +124,6 @@ ID_Value get_sha1(blob msg)
 	SHA().CalculateDigest(buffer, data, msg.size());
 	ID_Value ret(buffer);
  	return ret;
-}
-
-double time_diff( timeval first, timeval second ) {
-	double sec_diff = second.tv_sec - first.tv_sec;
-	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
-	return sec_diff;
 }
 
 tamed static void
@@ -263,17 +269,13 @@ connect_to_manager(str h, int port) {
 
 	srand(time(NULL));
 	//warn << "Starting reads...\n";
-	num_secs = NUM_SECS;
-	while ( time_diff(start_time, cur_time) < num_secs ) {
-		warn << "loop\n";
-		gettimeofday(&cur_time, NULL);
-		read_it(&keys[i]);
-	}
+	
+	START = start_time;
+	
+	read_it(&keys[i]);
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
 	//warn << "Average: " << ss.str().c_str() << " replies/second\n";*/
-
-	exit(0);
 
 }
 
