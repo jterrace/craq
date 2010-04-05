@@ -278,7 +278,7 @@ connect_to_manager(str h, int port) {
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
 	//warn << "Average: " << ss.str().c_str() << " replies/second\n";*/
-
+	twait{ delaycb(NUM_SECS, 0, mkevent()); }
 }
 
 tamed static
