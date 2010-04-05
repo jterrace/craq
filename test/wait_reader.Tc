@@ -266,7 +266,7 @@ connect_to_manager(str h, int port) {
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
 		gettimeofday(&cur_time, NULL);
-		twait{ read_it(&keys[i]); }
+		read_it(&keys[i]);
 	}
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
