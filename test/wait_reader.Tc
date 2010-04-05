@@ -61,7 +61,7 @@ tamed static void read_it(key_value * to_send) {
 	arg.chain = to_send->chain_id.get_rpc_id();
 	arg.dirty = false;
 	gettimeofday(&started, NULL);
-	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
+	cli->call(TAIL_READ_EX, &arg, &ret, e);
 	if(e) {
 		//fatal << "Read failed!\n";
 		warn << "Resetting\n";
@@ -265,6 +265,7 @@ connect_to_manager(str h, int port) {
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
+		warn << "loop\n";
 		gettimeofday(&cur_time, NULL);
 		read_it(&keys[i]);
 	}
