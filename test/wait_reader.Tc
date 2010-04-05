@@ -19,7 +19,6 @@ using namespace CryptoPP;
 using namespace std;
 
 int NUM_SECS;
-unsigned int MSGS_PER_SEC;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
 vector<string> DATA_CENTERS;
@@ -265,15 +264,9 @@ connect_to_manager(str h, int port) {
 	srand(time(NULL));
 	//warn << "Starting reads...\n";
 	num_secs = NUM_SECS;
-	wait_time = 1000000000 / MSGS_PER_SEC;
 	while ( time_diff(start_time, cur_time) < num_secs ) {
 		gettimeofday(&cur_time, NULL);
-		read_it(&keys[i]);
-		/*i++;
-		if(i > NUM_MESSAGES-1) {
-			i = 0;
-		}*/
-		twait{ delaycb(0, wait_time, mkevent()); }
+		twait{ read_it(&keys[i]); }
 	}
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
@@ -301,7 +294,6 @@ void main2(int argc, char **argv) {
 		TCLAP::ValueArg<int> keySize("s", "key_size", "Size of key data to generate", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chains within data centers", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
-		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to read", true, 0, "int", cmd);
 		cmd.parse(argc, argv);
 
 		manager_hostname = managerHost.getValue();
@@ -312,7 +304,6 @@ void main2(int argc, char **argv) {
 		MESSAGE_SIZE = keySize.getValue();
 		CHAIN_SIZE = chainSize.getValue();
 		NUM_SECS = numSecs.getValue();
-		MSGS_PER_SEC = msgsPerSec.getValue();
 
 		connect_to_manager(manager_hostname.c_str(), manager_port);
 	}
