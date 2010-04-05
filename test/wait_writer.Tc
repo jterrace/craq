@@ -19,9 +19,9 @@ using namespace CryptoPP;
 using namespace std;
 
 int NUM_SECS;
-unsigned int MSGS_PER_SEC;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
+timeval START;
 vector<string> DATA_CENTERS;
 string CHAIN_NAME;
 string KEY_NAME;
@@ -37,6 +37,12 @@ struct key_value {
 };
 
 map<ID_Value, Node> ring;
+
+double time_diff( timeval first, timeval second ) {
+	double sec_diff = second.tv_sec - first.tv_sec;
+	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
+	return sec_diff;
+}
 
 tamed static void write_it(key_value * to_send) {
 	tvars {
@@ -81,7 +87,11 @@ tamed static void write_it(key_value * to_send) {
 		usec_diff = usec_diff % 1000000;
 	}
 	warn << sec_diff << "\t" << usec_diff << "\n";
-	return;
+	if ( time_diff(START, cur_time) < NUM_SECS ) {
+		write_it(to_send);
+	} else {
+		exit(0);
+	}
 
 }
 
@@ -103,12 +113,6 @@ ID_Value get_sha1(blob msg)
 	SHA().CalculateDigest(buffer, data, msg.size());
 	ID_Value ret(buffer);
  	return ret;
-}
-
-double time_diff( timeval first, timeval second ) {
-	double sec_diff = second.tv_sec - first.tv_sec;
-	sec_diff += ((double)second.tv_usec - (double)first.tv_usec) / 1000000;
-	return sec_diff;
 }
 
 tamed static void
@@ -240,22 +244,12 @@ connect_to_manager(str h, int port) {
 
 	srand(time(NULL));
 	//warn << "Starting reads...\n";
-	num_secs = NUM_SECS;
-	wait_time = 1000000000 / MSGS_PER_SEC;
-	while ( time_diff(start_time, cur_time) < num_secs ) {
-		gettimeofday(&cur_time, NULL);
-		write_it(&keys[i]);
-		/*i++;
-		if(i > NUM_MESSAGES-1) {
-			i = 0;
-		}*/
-		twait{ delaycb(0, wait_time, mkevent()); }
-	}
+	START = start_time;
+		
+	write_it(&keys[i]);
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
 	//warn << "Average: " << ss.str().c_str() << " replies/second\n";*/
-
-	exit(0);
 
 }
 
@@ -277,7 +271,6 @@ void main2(int argc, char **argv) {
 		TCLAP::ValueArg<int> keySize("s", "key_size", "Size of key data to generate", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> chainSize("c", "chain_size", "Size of the chains within data centers", true, 0, "int", cmd);
 		TCLAP::ValueArg<int> numSecs("n", "num_secs", "Number of seconds to run the test for", true, 0, "int", cmd);
-		TCLAP::ValueArg<int> msgsPerSec("m", "msgs_per_sec", "Number of messages per second to write", true, 0, "int", cmd);
 		cmd.parse(argc, argv);
 
 		manager_hostname = managerHost.getValue();
@@ -288,7 +281,6 @@ void main2(int argc, char **argv) {
 		MESSAGE_SIZE = keySize.getValue();
 		CHAIN_SIZE = chainSize.getValue();
 		NUM_SECS = numSecs.getValue();
-		MSGS_PER_SEC = msgsPerSec.getValue();
 
 		connect_to_manager(manager_hostname.c_str(), manager_port);
 	}
