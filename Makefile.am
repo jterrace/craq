@@ -167,6 +167,7 @@ bin_PROGRAMS = chain_node \
                test/transaction_tester \
                test/bulk_loader \
                test/wait_reader \
+               test/wait_writer \
                router/router
 
 chain_node_SOURCES = chain_node.Tc $(OBJS)
@@ -180,4 +181,5 @@ test_get_chain_info_SOURCES = test/get_chain_info.Tc $(OBJS)
 test_transaction_tester_SOURCES = test/transaction_tester.Tc $(OBJS)
 test_bulk_loader_SOURCES = test/bulk_loader.Tc $(OBJS)
 test_wait_reader_SOURCES = test/wait_reader.Tc $(OBJS)
+test_wait_writer_SOURCES = test/wait_writer.Tc $(OBJS)
 router_router_SOURCES = router/router.Tc $(OBJS)
