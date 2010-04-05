@@ -59,7 +59,7 @@ tamed static void read_it(key_value * to_send) {
 		tail_read_ex_arg arg;
 		tail_read_ex_ret ret;
 	}
-
+	warn << "start_read_it\n";
 	twait { get_rpc_cli (to_send->head.getIp().c_str(),to_send->head.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 	if(fd < 0) {
 		return;
@@ -68,7 +68,9 @@ tamed static void read_it(key_value * to_send) {
 	arg.chain = to_send->chain_id.get_rpc_id();
 	arg.dirty = false;
 	gettimeofday(&started, NULL);
+	warn << "before read call\n";
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
+	warn << "after read call\n";
 	if(e) {
 		//fatal << "Read failed!\n";
 		warn << "Resetting\n";
