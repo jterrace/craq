@@ -18,10 +18,10 @@
 using namespace CryptoPP;
 using namespace std;
 
+timeval START;
 int NUM_SECS;
 unsigned int MESSAGE_SIZE;
 unsigned int NUM_MESSAGES;
-timeval START;
 vector<string> DATA_CENTERS;
 string CHAIN_NAME;
 string KEY_NAME;
@@ -243,14 +243,14 @@ connect_to_manager(str h, int port) {
 	warn << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	srand(time(NULL));
-	//warn << "Starting reads...\n";
 	START = start_time;
-		
+	//warn << "Starting reads...\n";
 	write_it(&keys[i]);
 	//ss.str("");
 	//ss << (sum_data / (double)num_data);
 	//warn << "Average: " << ss.str().c_str() << " replies/second\n";*/
-
+	twait{ delaycb(NUM_SECS, 0, mkevent()); }
+	exit(0);
 }
 
 tamed static
