@@ -90,7 +90,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		//construct the GET request
 		data << "GET /";
 		data << key.toString().c_str();
-		data << " HTTP/1.1\r\nHost:localhost\r\n\r\n";
+		data << " HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
 		LOG_DEBUG << "size of write: " << data.tosuio()->resid() << "\n";
 		
 		//write/flush the GET request
@@ -188,7 +188,7 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 	
 		request << "PUT /";
 		request << key.toString().c_str();
-		request << " HTTP/1.1\r\nHost:localhost\r\nContent-length: ";
+		request << " HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-length: ";
 		request << data->size();
 		request << "\r\n\r\n";
 		request << start;
@@ -293,7 +293,7 @@ tamed void HttpStorage::del(ID_Value key, cbb ret_bool) {
 	
 		request << "DELETE /";
 		request << key.toString().c_str();
-		request << " HTTP/1.1\r\nHost:localhost\r\n\r\n";
+		request << " HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
 		while(request.tosuio()->resid()) {
 			twait { tame::waitwrite(fd, mkevent()); }
 			if(request.tosuio()->output(fd) < 0) {
