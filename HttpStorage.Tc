@@ -31,7 +31,7 @@ tamed void HttpStorage::getFD(cbi ret_int) {
 	}
 	
 	if (conn_pool.empty()) {
-		twait { tcpconnect ("localhost", port, mkevent(fd)); }
+		twait { tcpconnect ("127.0.0.1", port, mkevent(fd)); }
 		LOG_DEBUG << "fd: " << fd << "\n";
 		TRIGGER(ret_int, fd);
 	} else {
