@@ -14,15 +14,15 @@
 #include "tame_io.h"
 #include "arpc.h"
 #include "async.h"
-#include "tame_aio.h"
+
 
 using namespace std;
 using namespace tame;
 
-tamed static void makeDirs(int num_hex_chars, std::string craqkey_dir) {
+
+tamed static void makeDirs(aiod *a, int num_hex_chars, std::string craqkey_dir) {
 	
 	tvars {
-		aiod * a;
 		int rc;
 		string name;
 		int num_folders;
@@ -31,9 +31,6 @@ tamed static void makeDirs(int num_hex_chars, std::string craqkey_dir) {
 	}
 	
 	LOG_DEBUG << "make dirs";
-	
-	//create a file class
-	a = New aiod (5, 0x20000, 0x10000);
 	
 	//create the high level key directory if it doesn't exist
 	twait { a->mkdir(craqkey_dir.c_str(), 0777, mkevent(rc)); }
@@ -75,7 +72,8 @@ DiskStorage::DiskStorage(log4cpp::Appender *app, int num)
 	LOG.setAppender(app);
 	num_hex_chars = num;
 	craqkey_dir = "/tmp/craqKeyFiles/";
-	makeDirs(num_hex_chars, craqkey_dir);
+	a = new aiod (5, 0x20000, 0x10000);
+	makeDirs(a, num_hex_chars, craqkey_dir);
 	LOG_DEBUG << "disk storage constructor";
 }
 
@@ -96,7 +94,6 @@ static blob make_blob(const char * str) {
 tamed void DiskStorage::get(ID_Value key, cb_blob ret_blob) {
 	
 	tvars {
-		aiod * a;
 		int rc;
 		ptr<aiofh> fh;
 		struct stat *sb;
@@ -111,9 +108,6 @@ tamed void DiskStorage::get(ID_Value key, cb_blob ret_blob) {
 
 	//amount of bytes to read from file at once
 	blocksz = 0x4000;
-
-	//create a file class
-	a = New aiod (5, 0x20000, 0x10000);
 
 	//open the file for reading
 	LOG_INFO << "file name is: " << (craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str() << "\n";
@@ -178,7 +172,6 @@ tamed void DiskStorage::get(ID_Value key, cb_blob ret_blob) {
 tamed void DiskStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 	
 	tvars {
-		aiod * a;
 		int rc;
 		ptr<aiofh> fh;
 		ptr<aiobuf> buf, b2;
@@ -192,9 +185,6 @@ tamed void DiskStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 
 	//amount of bytes to write to file at once
 	blocksz = 0x4000;
-
-	//create a file class
-	a = New aiod (5, 0x20000, 0x10000);
 	
 	//find directory name
 	dirName = craqkey_dir + key.toString().substr(0, num_hex_chars);
@@ -287,12 +277,8 @@ tamed void DiskStorage::replace(ID_Value key, const blob* data, cbb ret_blob) {
 tamed void DiskStorage::del(ID_Value key, cbb ret_bool) {
 	
 	tvars {
-		aiod * a;
 		int rc;
 	}
-
-	//create a file class
-	a = New aiod (5, 0x20000, 0x10000);
 
 	//delete the file
 	LOG_INFO << "file name to delete is: " << (craqkey_dir + key.toString().substr(0, num_hex_chars) + "/" + key.toString()).c_str() << "\n";
