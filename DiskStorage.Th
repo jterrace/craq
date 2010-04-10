@@ -2,11 +2,14 @@
 #define DISKSTORAGE_H_
 #include <string>
 #include <queue>
-#include "Storage.h"
-#include "ID_Value.h"
-#include "craq_rpc.h"
-#include "tame.h"
+#include "arpc.h"
 #include "tame_aio.h"
+#include "Storage.h"
+#include "tame_io.h"
+#include "async.h"
+#include "ID_Value.h"
+
+
 
 using namespace std;
 

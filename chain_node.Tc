@@ -8,16 +8,12 @@
 #include <sstream>
 #include <ctime>
 #include "sha.h"
-#include "tame.h"
+#include "DiskStorage.h"
 #include "tame_rpcserver.h"
 #include "parseopt.h"
-#include "arpc.h"
-#include "async.h"
-#include "craq_rpc.h"
 #include "ID_Value.h"
 #include "Node.h"
 #include "MemStorage.h"
-#include "DiskStorage.h"
 #include "HttpStorage.h"
 #include "Storage.h"
 #include "connection_pool.Th"

@@ -1,19 +1,10 @@
 #include "libconfig.h++"
 #include "logging.h"
-#include "arpc.h"
-#include "tame_aio.h"
 #include "DiskStorage.h"
-#include "tame_io.h"
-#include "async.h"
 #include <math.h>
 #include <sstream>
 #include <string>
 #include <iostream>
-
-#include "tame.h"
-#include "tame_io.h"
-#include "arpc.h"
-#include "async.h"
 
 
 using namespace std;
