@@ -1,7 +1,7 @@
 #ifndef DISKSTORAGE_H_
 #define DISKSTORAGE_H_
 #include <string>
-#include <map>
+#include <queue>
 #include "Storage.h"
 #include "ID_Value.h"
 #include "craq_rpc.h"
@@ -16,7 +16,7 @@ class DiskStorage : public Storage
 	private:
 		int num_hex_chars;
 		string craqkey_dir;
-		aiod * a;
+		queue<aiod *> a_queue;
 	
 	public:
 		DiskStorage(log4cpp::Appender*, int);
