@@ -16,7 +16,9 @@ class DiskStorage : public Storage
 	private:
 		int num_hex_chars;
 		string craqkey_dir;
-		queue<aiod *> a_queue;
+		const static int a_list_size = 8;
+		aiod **a_list;
+		int a_index;
 	
 	public:
 		DiskStorage(log4cpp::Appender*, int);
