@@ -1040,6 +1040,9 @@ tamed void process_ack(svccb * sbp) {
 
 	//Update committed version number
 	kit->second.committed = parg.ver;
+
+	LOG_WARN << "directly before pending list erase";
+
 	//Erase all pending versions less than one just committed
 	kit->second.pending_list.erase(kit->second.pending_list.begin(), pendit);
 
