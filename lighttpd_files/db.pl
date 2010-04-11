@@ -14,7 +14,7 @@ my $errorlog = "dberror";
 if ($request_method eq 'GET') {
 
 	$db = new BerkeleyDB::Hash( -Filename => $filename,
-				    -Flags => DB_RDONLY | DB_THREAD) or die "Cannot open file $filename";
+				    -Flags => DB_RDONLY | DB_THREAD | DB_INIT_LOCK) or die "Cannot open file $filename";
 	$db->db_get($request_uri, $val);
 	print $val;	
 	
@@ -23,17 +23,18 @@ if ($request_method eq 'GET') {
 	read(STDIN, $buffer, $content_length);
 	if (!(-e $filename)) {
 		$db = new BerkeleyDB::Hash( -Filename => $filename,
-					    -Flags => DB_CREATE | DB_THREAD) or die "Cannot open file $filename";
+					    -Flags => DB_CREATE | DB_THREAD | DB_INIT_LOCK) or die "Cannot open file 
+$filename";
         } else {
 		$db = new BerkeleyDB::Hash( -Filename => $filename,
-					    -Flags => DB_THREAD) or die "Cannot open file $filename";
+					    -Flags => DB_THREAD | DB_INIT_LOCK) or die "Cannot open file $filename";
 	}
 	$db->db_put($request_uri, $buffer);
 	
 } elsif ($request_method eq 'DELETE') {
 
 	$db = new BerkeleyDB::Hash( -Filename => $filename,
-				    -Flags => DB_THREAD) or die "Cannot open file $filename";
+				    -Flags => DB_THREAD | DB_INIT_LOCK) or die "Cannot open file $filename";
         $db->db_del($request_uri);
 	
 } else {
