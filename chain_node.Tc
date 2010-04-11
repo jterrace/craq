@@ -1044,7 +1044,9 @@ tamed void process_ack(svccb * sbp) {
 	LOG_WARN << "directly before pending list erase";
 
 	//Erase all pending versions less than one just committed
-	kit->second.pending_list.erase(kit->second.pending_list.begin(), pendit);
+	pendit = kit->second.pending_list.find(parg.ver);
+	if(pendit != kit->second.pending_list.end())
+		kit->second.pending_list.erase(kit->second.pending_list.begin(), pendit);
 
 	LOG_WARN << "Updated key " << id.toString().c_str() << " to "
 		 << kit->second.committed << "/" << kit->second.max_pending << "\n";
