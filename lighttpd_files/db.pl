@@ -24,6 +24,7 @@ if ($request_method eq 'GET') {
 				    -Flags => DB_RDONLY,
 				    -Hash => \&hash) or die "Cannot open file $filename";
 	$db->db_get($request_uri, $val);
+	$db->db_sync();
 	print $val;	
 	
 } elsif ($request_method eq 'PUT') {
@@ -38,13 +39,15 @@ if ($request_method eq 'GET') {
 					    -Hash => \&hash) or die "Cannot open file $filename";
 	}
 	$db->db_put($request_uri, $buffer);
-	
+	$db->db_sync();	
+
 } elsif ($request_method eq 'DELETE') {
 
 	$db = new BerkeleyDB::Hash( -Filename => $filename,
 				    -Hash => \&hash) or die "Cannot open file $filename";
         $db->db_del($request_uri);
-	
+	$db->db_sync();	
+
 } else {
 	exec('echo ' . '"unrecognized request method: ' . $request_method . '" > ' . $errorlog);
 }
