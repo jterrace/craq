@@ -18,7 +18,7 @@ if ($request_method eq 'GET') {
 	lock_detect($db);
 	$db->db_get($request_uri, $val);
 	print $val;
-	$db->close();	
+	$db->db_close();	
 	
 } elsif ($request_method eq 'PUT') {
 	
@@ -33,7 +33,7 @@ $filename";
 	}
 	lock_detect($db);
 	$db->db_put($request_uri, $buffer);
-	$db->close();	
+	$db->db_close();	
 
 } elsif ($request_method eq 'DELETE') {
 
@@ -41,7 +41,7 @@ $filename";
 				    -Flags => DB_THREAD | DB_INIT_LOCK) or die "Cannot open file $filename";
 	lock_detect($db);
  	$db->db_del($request_uri);
-	$db->close();	
+	$db->db_close();	
 
 } else {
 	exec('echo ' . '"unrecognized request method: ' . $request_method . '" > ' . $errorlog);
