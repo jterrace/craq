@@ -80,6 +80,7 @@ tamed static void read_it(key_value * to_send) {
 		warn << "Bad message size\n";
 		invalidate_rpc_host(to_send->head.getIp().c_str(), to_send->head.getPort());
 		read_it(to_send);
+		return;
 	}
 
 	gettimeofday(&cur_time, NULL);
