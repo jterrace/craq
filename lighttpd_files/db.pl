@@ -14,7 +14,7 @@ my $errorlog = "dberror";
 if ($request_method eq 'GET') {
 
 	$db = new BerkeleyDB::Hash( -Filename => $filename,
-				    -Flags => DB_RDONLY | DB_INIT_LOCK) or die "Cannot open file $filename";
+				    -Flags => DB_RDONLY | DB_INIT_LOCK | DB_INIT_MPOOL) or die "Cannot open file $filename";
 	$db->db_get($request_uri, $val);
 	$db->db_close();
 	print $val;	
@@ -24,10 +24,10 @@ if ($request_method eq 'GET') {
 	read(STDIN, $buffer, $content_length);
 	if (!(-e $filename)) {
 		$db = new BerkeleyDB::Hash( -Filename => $filename,
-					    -Flags => DB_CREATE | DB_INIT_LOCK) or die "Cannot open file $filename";
+					    -Flags => DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL) or die "Cannot open file $filename";
         } else {
 		$db = new BerkeleyDB::Hash( -Filename => $filename,
-					    -Flags => DB_INIT_LOCK) or die "Cannot open file $filename";
+					    -Flags => DB_INIT_LOCK | DB_INIT_MPOOL) or die "Cannot open file $filename";
 	}
 	$db->db_put($request_uri, $buffer);
 	$db->db_close();	
@@ -35,7 +35,7 @@ if ($request_method eq 'GET') {
 } elsif ($request_method eq 'DELETE') {
 
 	$db = new BerkeleyDB::Hash( -Filename => $filename,
-				    -Flags => DB_INIT_LOCK) or die "Cannot open file $filename";
+				    -Flags => DB_INIT_LOCK | DB_INIT_MPOOL) or die "Cannot open file $filename";
         $db->db_del($request_uri);
 	$db->db_close();
 } else {
