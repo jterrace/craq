@@ -17,8 +17,8 @@ if ($request_method eq 'GET') {
 				    -Flags => DB_RDONLY | DB_THREAD | DB_INIT_LOCK) or die "Cannot open file $filename";
 	lock_detect($db);
 	$db->db_get($request_uri, $val);
-	$db->close();
-	print $val;	
+	print $val;
+	$db->close();	
 	
 } elsif ($request_method eq 'PUT') {
 	
