@@ -39,3 +39,5 @@ if ($request_method eq 'GET') {
 } else {
 	exec('echo ' . '"unrecognized request method: ' . $request_method . '" > ' . $errorlog);
 }
+
+lock_detect($db);
