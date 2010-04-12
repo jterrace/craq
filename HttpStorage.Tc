@@ -1,3 +1,4 @@
+#include <math.h>
 #include "logging.h"
 #include "arpc.h"
 #include "tame_aio.h"
@@ -53,6 +54,24 @@ static blob make_blob(const char * str) {
 	return to_ret;
 }
 
+static int xtoi(char *str) {
+	
+	int return_val = 0;
+	int length = strlen(str);
+	for (int i = 0; i < length; i++) {
+		int letter = str[length - i - 1];
+		if (letter <= '9') {
+			letter -= '0';
+		} else {
+			letter -='a';
+			letter += 10;
+		}
+		return_val += letter * (int) pow(16, i);
+	}
+	return return_val;
+	
+}
+
 tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 	tvars {
 		int fd;
@@ -70,6 +89,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		blob value;
 		int prev_size;
 		int count;
+		int value_size;
 	}
 	
 	prev_size = 0;
@@ -147,8 +167,9 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 			content = crlf2 + 2;
 			crlf += 4;
 			*crlf2 = '\0';
-			if (strlen(content) >= atoi(crlf)) {
-				content[atoi(crlf)] = '\0';
+			value_size = xtoi(crlf);
+			if (strlen(content) >= value_size) {
+				content[value_size] = '\0';
 				value = make_blob(str(content));
 				conn_pool.push(fd);
 				TRIGGER(ret_blob, New refcounted<blob>(value));
