@@ -1440,6 +1440,7 @@ void rpc_server::dispatch(svccb * sbp) {
 			break;
 		}
 	}
+	LOG_INFO << "end of rpc_server::dispatch";
 }
 
 ring_iter ring_succ(ID_Value id) {
