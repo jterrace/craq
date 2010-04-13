@@ -527,10 +527,15 @@ tamed void process_tail_read_ex(svccb * sbp) {
 	if(!parg.dirty && it->second.committed == it->second.max_pending) {
 		LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
 		twait { storage->get(id, mkevent(repl)); }
+		LOG_INFO << "after storage get";
 		to_rep.data = *repl;
+		LOG_INFO << "1";
 		to_rep.dirty = false;
+		LOG_INFO << "2";
 		to_rep.ver = it->second.committed;
+		LOG_INFO << "before replyref";
 		sbp->replyref(to_rep);
+		LOG_INFO << "after replyref";
 		return;
 	} else {
 		LOG_WARN << "Dirty READ " << id.toString().c_str() << "\n";
@@ -603,10 +608,15 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			if(it->second.committed == it->second.max_pending) {
 				LOG_WARN << "Clean READ " << id.toString().c_str() << "\n";
 				twait { storage->get(id, mkevent(repl)); }
+				LOG_INFO << "after storage get 2";
 				to_rep.data = *repl;
+				LOG_INFO << "3";
 				to_rep.dirty = true;
+				LOG_INFO << "4";
 				to_rep.ver = it->second.committed;
+				LOG_INFO << "before replyref 2";
 				sbp->replyref(to_rep);
+				LOG_INFO << "after replyref 2";
 				return;
 			}
 			//See if we have the version the tail would return
