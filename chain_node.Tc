@@ -520,6 +520,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 
 	if(it == key_meta_list.end() ) {
 		sbp->replyref(empty);
+		LOG_INFO << "iterator is at the end of the meta list";
 		return;
 	}
 
@@ -557,8 +558,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			tail = *ext_tail;
 		}
 
+		LOG_INFO << "before get_rpc_cli call";
 		twait { get_rpc_cli (tail.getIp().c_str(), tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
-
+		LOG_INFO << "after get_rpc_cli call";
+		
 		if( fd<0 ) {
 			report_bad_node(tail);
 			sbp->replyref(empty);
@@ -568,7 +571,9 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		//Query tail
 		qry_id = id.get_rpc_id();
 		//gettimeofday(&started, NULL);
+		LOG_INFO << "before query_obj_ver call";
 		twait {	cli->call(QUERY_OBJ_VER, &qry_id, &ret,  mkevent(e)); }
+		LOG_INFO << "after query_obj_ver call";
 		/*gettimeofday(&cur_time, NULL);
 		sec_diff = cur_time.tv_sec - started.tv_sec;
 		if(sec_diff == 0) {
@@ -582,6 +587,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		LOG_WARN << sec_diff << "\t" << usec_diff << "\n";*/
 
 		if(e) {
+			LOG_INFO << "report bad node";
 			report_bad_node(rit->second);
 			sbp->replyref(empty);
 			return;
