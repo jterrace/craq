@@ -56,6 +56,7 @@ static blob make_blob(const char * str) {
 
 static int xtoi(char *str) {
 	
+	LOG_INFO << "in xtoi";
 	int return_val = 0;
 	int length = strlen(str);
 	for (int i = 0; i < length; i++) {
@@ -82,6 +83,7 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		char buff[MAX_BUF];
 		strbuf output;
 		char *s_out;
+		str str_out;
 		char *crlf;
 		char *crlf2;
 		char *content;
@@ -91,6 +93,8 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 		int count;
 		int value_size;
 	}
+	
+	LOG_INFO << "in http get";
 	
 	prev_size = 0;
 	count = 0;
@@ -141,7 +145,8 @@ tamed void HttpStorage::get(ID_Value key, cb_blob ret_blob) {
 				resp.tosuio()->rembytes(line_len);
 				line_len = resp.tosuio()->linelen();
 			}
-			s_out = (char *) str(output).cstr();
+			str_out = str(output);
+			s_out = (char *) str_out.cstr();
 			if ((prev_size == strlen(s_out)) || (strlen(s_out) <= 0)) {
 				count++;
 			} else {
@@ -194,6 +199,8 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 		const char *start;
 		char *end;
 	}
+	
+	LOG_INFO << "in http set";
 	
 	while (true) {
 		twait { getFD (mkevent(fd)); }
