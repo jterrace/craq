@@ -27,6 +27,4 @@ if ($request_method === 'GET') {
 
 }
 
-$db->close();
-
 ?>
