@@ -195,6 +195,7 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 		char buff[MAX_BUF];
 		strbuf output;
 		const char *s_out;
+		str str_out;
 		char *crlf;
 		const char *start;
 		char *end;
@@ -246,7 +247,8 @@ tamed void HttpStorage::set(ID_Value key, const blob* data, cbb ret_blob) {
 				resp.tosuio()->rembytes(line_len);
 				line_len = resp.tosuio()->linelen();
 			}
-			s_out = str(output).cstr();
+			str_out = str(output);
+			s_out = (char *) str_out.cstr();
 			crlf = (char *) strstr(s_out, "\r\n\r\n");
 			if (crlf == NULL && strlen(s_out) > 0) {
 				cout << "crlf == NULL\n";
