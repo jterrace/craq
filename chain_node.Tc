@@ -2,6 +2,7 @@
 #include "logging.h"
 #include <iostream>
 #include <string>
+#include <ctime>
 #include <map>
 #include <set>
 #include <deque>
@@ -507,7 +508,11 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		timeval cur_time;
 		long sec_diff;
 		long usec_diff;
+		timeval cur_time;
 	}
+
+	gettimeofday(&cur_time, NULL);
+	warn << "READ\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	parg = *(sbp->getarg<tail_read_ex_arg>());
 	LOG_WARN << "Got TAIL_READ_EX Request\n";
@@ -535,6 +540,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		to_rep.ver = it->second.committed;
 		LOG_INFO << "before replyref";
 		sbp->replyref(to_rep);
+
+		gettimeofday(&cur_time, NULL);
+		warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+
 		LOG_INFO << "after replyref";
 		return;
 	} else {
@@ -616,6 +625,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				to_rep.ver = it->second.committed;
 				LOG_INFO << "before replyref 2";
 				sbp->replyref(to_rep);
+
+				gettimeofday(&cur_time, NULL);
+				warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+
 				LOG_INFO << "after replyref 2";
 				return;
 			}
@@ -633,6 +646,10 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			to_rep.dirty = true;
 			to_rep.ver = ret.hist;
 			sbp->replyref(to_rep);
+
+			gettimeofday(&cur_time, NULL);
+			warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+
 			return;
 		}
 	}
@@ -649,7 +666,11 @@ tamed void process_head_write(svccb * sbp) {
 		key_meta wrt;
 		bool ret_val;
 		ptr<chain_meta> chain_info;
+		timeval cur_time;
 	}
+
+	gettimeofday(&cur_time, NULL);
+	warn << "WRITE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	parg = *(sbp->getarg<head_write_arg>());
 	LOG_WARN << "Got HEAD_WRITE Request\n";
@@ -1007,6 +1028,7 @@ tamed void process_ack(svccb * sbp) {
 		deque<svccb *>::iterator repls;
 		bool ret_val;
 		bool set_succ;
+		timeval cur_time;
 	}
 
 	parg = *(sbp->getarg<ack_arg>());
@@ -1048,6 +1070,10 @@ tamed void process_ack(svccb * sbp) {
 		for(repls = it->second.begin(); repls != it->second.end(); repls++) {
 			LOG_WARN << "Replying to write request\n";
 			(*repls)->replyref(true);
+
+			gettimeofday(&cur_time, NULL);
+			warn << "WRITE_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+
 		}
 		it->second.clear();
 		kit->second.write_reqs.erase(it++);
