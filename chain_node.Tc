@@ -511,7 +511,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 	}
 
 	gettimeofday(&cur_time, NULL);
-	warn << "READ\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	LOG_ALERT << "READ\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	parg = *(sbp->getarg<tail_read_ex_arg>());
 	LOG_WARN << "Got TAIL_READ_EX Request\n";
@@ -541,7 +541,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		sbp->replyref(to_rep);
 
 		gettimeofday(&cur_time, NULL);
-		warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+		LOG_ALERT << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 		LOG_INFO << "after replyref";
 		return;
@@ -574,7 +574,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 		LOG_INFO << "before get_rpc_cli call";
 		twait { get_rpc_cli (tail.getIp().c_str(), tail.getPort(), &cli, &chain_node_1, mkevent(fd)); }
 		LOG_INFO << "after get_rpc_cli call";
-		
+
 		if( fd<0 ) {
 			report_bad_node(tail);
 			sbp->replyref(empty);
@@ -626,7 +626,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 				sbp->replyref(to_rep);
 
 				gettimeofday(&cur_time, NULL);
-				warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+				LOG_ALERT << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 				LOG_INFO << "after replyref 2";
 				return;
@@ -647,7 +647,7 @@ tamed void process_tail_read_ex(svccb * sbp) {
 			sbp->replyref(to_rep);
 
 			gettimeofday(&cur_time, NULL);
-			warn << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+			LOG_ALERT << "READ_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 			return;
 		}
@@ -669,7 +669,7 @@ tamed void process_head_write(svccb * sbp) {
 	}
 
 	gettimeofday(&cur_time, NULL);
-	warn << "WRITE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	LOG_ALERT << "WRITE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	parg = *(sbp->getarg<head_write_arg>());
 	LOG_WARN << "Got HEAD_WRITE Request\n";
@@ -1071,7 +1071,7 @@ tamed void process_ack(svccb * sbp) {
 			(*repls)->replyref(true);
 
 			gettimeofday(&cur_time, NULL);
-			warn << "WRITE_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+			LOG_ALERT << "WRITE_DONE\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 		}
 		it->second.clear();

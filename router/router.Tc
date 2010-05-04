@@ -250,19 +250,19 @@ tamed static void get_key(string key, cbblob cb) {
     LOG_WARN << "Reading from " << succ->second.getIp().c_str();
 
 	gettimeofday(&cur_time, NULL);
-	warn << "PRERPC\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	LOG_ALERT << "PRERPC\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	twait {	cli->call(TAIL_READ_EX, &arg, &ret,  mkevent(e)); }
 
 	gettimeofday(&cur_time, NULL);
-	warn << "POSTRPC\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	LOG_ALERT << "POSTRPC\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	if(e) {
 		TRIGGER(cb, make_blob(("ERROR reading chain: " + key + "\r\n").c_str()));
 		return;
 	}
 
-	out << "VALUE " << ret.data.size() << "\r\n";
+	out << "VALUE " << key << " " << ret.data.size() << "\r\n";
 
 	to_ret = make_blob(out.str().c_str());
 
@@ -305,7 +305,7 @@ tamed static void send_blob(int fd, blob bin_data, cbb cb) {
 	}
 
 	gettimeofday(&cur_time, NULL);
-	warn << "RIGHT_BEFORE_REPLY\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+	LOG_ALERT << "RIGHT_BEFORE_REPLY\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
 	while(data.tosuio()->resid()) {
 		twait { tame::waitwrite(fd, mkevent()); }
@@ -349,7 +349,7 @@ tamed static void process(int fd)
 				buff[line_len] = '\0';
 
 				gettimeofday(&cur_time, NULL);
-				warn << "REQUEST\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
+				LOG_ALERT << "REQUEST\t" << cur_time.tv_sec << "\t" << cur_time.tv_usec << "\n";
 
                 LOG_WARN << "Got request " << buff;
 				line = buff;
